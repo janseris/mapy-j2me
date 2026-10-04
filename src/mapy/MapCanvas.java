@@ -33,7 +33,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     static final Command RELOAD = new Command("Načíst znovu", Command.SCREEN, 9);
     static final Command LOG = new Command("Log", Command.SCREEN, 10);
     static final Command SETTINGS = new Command("Nastavení", Command.SCREEN, 11);
-    static final Command EXIT = new Command("Konec", Command.EXIT, 12);
+    // SCREEN, not EXIT: the 9300 always puts an EXIT command on the bottom side button
+    static final Command EXIT = new Command("Konec", Command.SCREEN, 12);
 
     final Mapy app;
     int zoom;
