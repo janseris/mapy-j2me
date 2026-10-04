@@ -51,6 +51,29 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     Place hovered;
     int nextIndex;
 
+    // hover preview (thumbnail + rating from Mapy.com) shown in the panel
+    Place previewFor;
+    Image previewImage;
+    String previewRating = "";
+
+    void setPreview(Place p, Image im, String rating) {
+        previewFor = p;
+        previewImage = im;
+        previewRating = rating;
+        if (hovered == p) repaintPanel();
+    }
+
+    /** After the cursor rests on an object for a second, ask for its preview. */
+    void hoverChanged(final Place p) {
+        if (p == null || !Settings.preview || p == previewFor) return;
+        new Thread() {
+            public void run() {
+                try { Thread.sleep(1000); } catch (InterruptedException e) {}
+                if (hovered == p) app.preview(p);
+            }
+        }.start();
+    }
+
     volatile String status = "";
     String lastKey = "";
     final Object wake = new Object();
@@ -176,12 +199,18 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         status = "Mapa: zbývá " + missing;
         repaintPanel();
         try {
-            Net.Response r = Net.get("https://tile.openstreetmap.org/" + z + "/" + tx + "/" + by + ".png", "dlaždice " + k);
-            if (r.code != 200) {
-                Log.add("tile " + k + ": HTTP " + r.code);
+            String url = "https://tile.openstreetmap.org/" + z + "/" + tx + "/" + by + ".png";
+            byte[] body = DiskCache.get(url);         // phone storage first, then the network
+            if (body == null) {
+                Net.Response r = Net.get(url, "dlaždice " + k);
+                if (r.code == 200) DiskCache.put(url, r.body);
+                else Log.add("tile " + k + ": HTTP " + r.code);
+                body = r.code == 200 ? r.body : null;
+            }
+            if (body == null) {
                 failed.put(k, Boolean.TRUE);
             } else {
-                Image im = Image.createImage(r.body, 0, r.body.length);
+                Image im = Image.createImage(body, 0, body.length);
                 synchronized (tiles) {
                     tiles.put(k, im);
                     tileOrder.addElement(k);
@@ -372,6 +401,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         mx = nx; my = ny;
         Place before = hovered;
         hovered = objectAt(mx, my, HOVER_R);
+        if (hovered != before) hoverChanged(hovered);
         if (panned) {
             viewChanged();
         } else if (hovered != before) {
@@ -651,6 +681,21 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             if (hov.subtitle.length() > 0) {
                 g.setColor(0xB5BAC1);
                 y = wrap(g, f, hov.subtitle, 3, y, tw, 2);
+            }
+            if (hov == previewFor) {
+                if (previewRating.length() > 0) {
+                    g.setColor(0xFCEE74);
+                    y = wrap(g, f, previewRating, 3, y, tw, 2);
+                }
+                Image im = previewImage;
+                int room = h - 4 * fh - 6 - y;
+                if (im != null && room > 30) {
+                    int cx0 = g.getClipX(), cy0 = g.getClipY(), cw0 = g.getClipWidth(), ch0 = g.getClipHeight();
+                    g.clipRect(3, y + 2, tw, Math.min(room, im.getHeight()));
+                    g.drawImage(im, 3 + tw / 2, y + 2, Graphics.TOP | Graphics.HCENTER);
+                    g.setClip(cx0, cy0, cw0, ch0);
+                    y += Math.min(room, im.getHeight()) + 4;
+                }
             }
             g.setColor(0x80848E);
             y = wrap(g, f, "Enter = otevřít", 3, y, tw, 1);

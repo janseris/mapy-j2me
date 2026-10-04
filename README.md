@@ -3,7 +3,7 @@
 A map app for the **Nokia 9300 / 9500 Communicator** (Series 80 v2, Symbian 7.0s, J2ME MIDP 2.0),
 inspired by the Mapy.com Android app.
 
-**Demo 0.6:**
+**Demo 0.7:**
 
 - **Map:** OpenStreetMap tiles (`tile.openstreetmap.org`), panning and zoom, up to 24 tiles in memory.
 - **Points of interest overlay** (from zoom 16): restaurants, cafés, pubs, accommodation, parking,
@@ -12,6 +12,14 @@ inspired by the Mapy.com Android app.
   (Overpass API); they are drawn with the **Mapy.com map icons** (`res/poi_icons16.png`, made from the
   icons the Mapy.com app loads from `api.mapy.cz/poiimg/icon`). A click opens the same place in
   Mapy.com (search by name nearby, then `getDetail`); without a match it shows the OSM data.
+- **Photos:** the detail shows the place's main photo; "Fotky (N)" opens a full-screen gallery
+  (arrows = next). Photos come from Seznam's image servers in a size that fits the screen
+  (`?fl=res,,<height>,3`).
+- **Hover preview:** when the cursor rests on an object for a second, the panel shows its Mapy.com
+  rating and a small photo (can be switched off in Nastavení; costs a few requests per object).
+- **Caching:** map tiles and photos are kept in an LRU cache in the phone's record store (RMS, no
+  permission prompts), 16 MB by default, set in Nastavení (0–48 MB, "Smazat mezipaměť"). Entries
+  older than 30 days are fetched again. In memory: the last 24 tiles, 12 photos and 40 Mapy.com details.
 - **Search:** Mapy.com suggestions (`vectmap.mapy.cz/rpc`, FastRPC `suggest`) near the map view;
   the chosen result gets a red pin.
 - **Place detail:** Mapy.com `getDetail` (address, rating, description, facts).
@@ -51,7 +59,7 @@ Up, -1), so zoom is on the side buttons and `+` / `-`.
   another thread) after 15 s without progress, 3 attempts, a short pause after each request so the
   phone keeps answering the PC's USB keep-alive. Progress is shown in the bottom strip, and only that
   strip (or the arriving tile) is repainted while loading.
-- Our own `User-Agent` (`Mapy9300/0.6 (+https://github.com/janseris/mapy-j2me)`), as OSM's tile and
+- Our own `User-Agent` (`Mapy9300/0.7 (+https://github.com/janseris/mapy-j2me)`), as OSM's tile and
   Overpass policies require; tiles only for the visible area, no prefetching.
 - Mapy.com calls: the FastRPC requests captured from the Android app (encoder verified byte for byte
   against the capture), without key or login.

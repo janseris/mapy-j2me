@@ -40,10 +40,12 @@ public class Mapy extends MIDlet implements CommandListener {
 
     protected void destroyApp(boolean u) {
         Settings.save();
+        DiskCache.saveIndex();
     }
 
     void exit() {
         Settings.save();
+        DiskCache.saveIndex();
         notifyDestroyed();
     }
 
@@ -122,15 +124,18 @@ public class Mapy extends MIDlet implements CommandListener {
     // ---------------------------------------------------------------- detail
 
     void detail(final Place p) {
-        if (p.osm) {
-            // object from the overlay: open the same place in Mapy.com (falls back to the OSM data)
-            mapyDetailFor(p);
-            return;
-        }
         new Task() {
             String name() { return "Detail"; }
             void work() throws Exception {
-                showDetail(p, MapyApi.detail(p.source, p.id));
+                Object[] c;
+                try {
+                    c = lookup(p);
+                } catch (Exception e) {
+                    if (!p.osm) throw e;
+                    Log.add("Mapy.com lookup for " + p.title + " failed: " + e);
+                    c = new Object[] { p, null };
+                }
+                showDetail((Place) c[0], (FrpcStruct) c[1]);
             }
         }.go();
     }
@@ -146,37 +151,74 @@ public class Mapy extends MIDlet implements CommandListener {
         }.go();
     }
 
-    /** OSM POI -> the same place in Mapy.com: search its name near it, take the nearest hit. */
-    void mapyDetailFor(final Place osm) {
-        new Task() {
-            String name() { return "Detail z Mapy.com"; }
-            void work() throws Exception {
+    /** Mapy.com details already fetched: key -> { Place (Mapy.com place or the OSM one), FrpcStruct detail or null }. */
+    final Lru details = new Lru(40);
+
+    static String keyOf(Place p) {
+        return p.osm ? "osm:" + p.id : p.source + "/" + p.id;
+    }
+
+    /**
+     * The Mapy.com detail of a place. An OSM object is first found in Mapy.com by its name near its
+     * position (nearest result within 300 m); without a match the detail is null.
+     */
+    Object[] lookup(Place p) throws Exception {
+        String key = keyOf(p);
+        Object[] c = (Object[]) details.get(key);
+        if (c != null) return c;
+        Place best = p;
+        if (p.osm) {
+            best = null;
+            double d = 0.002, bd = 300;     // metres
+            Vector r = MapyApi.suggest(p.title, p.lon, p.lat, new double[] { p.lon - d, p.lat - d, p.lon + d, p.lat + d }, 17);
+            for (int i = 0; i < r.size(); i++) {
+                Place m = (Place) r.elementAt(i);
+                double dist = Geo.distance(p.lon, p.lat, m.lon, m.lat);
+                if (dist < bd && m.source.length() > 0) { bd = dist; best = m; }
+            }
+            if (best == null) {
+                Log.add("no Mapy.com match for " + p.title);
+                c = new Object[] { p, null };
+                details.put(key, c);
+                return c;
+            }
+            Log.add("Mapy.com match for " + p.title + ": " + best.source + "/" + best.id + " (" + (int) bd + " m)");
+        }
+        c = new Object[] { best, MapyApi.detail(best.source, best.id) };
+        details.put(key, c);
+        return c;
+    }
+
+    // ---------------------------------------------------------------- hover preview
+
+    volatile boolean previewing;
+
+    /** Thumbnail and rating for the panel when the cursor rests on an object. */
+    void preview(final Place p) {
+        if (!Settings.preview || previewing || busy) return;
+        previewing = true;
+        new Thread() {
+            public void run() {
                 try {
-                    lookup();
-                } catch (Exception e) {
-                    Log.add("Mapy.com lookup for " + osm.title + " failed: " + e);
-                    showDetail(osm, null);
+                    Object[] c = lookup(p);
+                    FrpcStruct d = (FrpcStruct) c[1];
+                    String rating = d == null ? "" : rating(d);
+                    map.setPreview(p, null, rating);
+                    String u = d == null ? null : Photos.header(d);
+                    if (u != null) map.setPreview(p, Photos.load(Photos.sized(u, 80), "náhled"), rating);
+                } catch (Throwable e) {
+                    Log.add("preview " + p.title + ": " + e);
+                } finally {
+                    previewing = false;
                 }
             }
-            void lookup() throws Exception {
-                double d = 0.002;
-                Vector r = MapyApi.suggest(osm.title, osm.lon, osm.lat, new double[] { osm.lon - d, osm.lat - d, osm.lon + d, osm.lat + d }, 17);
-                Place best = null;
-                double bd = 300;    // metres
-                for (int i = 0; i < r.size(); i++) {
-                    Place c = (Place) r.elementAt(i);
-                    double m = Geo.distance(osm.lon, osm.lat, c.lon, c.lat);
-                    if (m < bd && c.source.length() > 0) { bd = m; best = c; }
-                }
-                if (best == null) {
-                    Log.add("no Mapy.com match for " + osm.title + ", showing OSM data");
-                    showDetail(osm, null);
-                    return;
-                }
-                Log.add("mapy match for " + osm.title + ": " + best.source + "/" + best.id + " (" + (int) bd + " m)");
-                showDetail(best, MapyApi.detail(best.source, best.id));
-            }
-        }.go();
+        }.start();
+    }
+
+    static String rating(FrpcStruct d) {
+        FrpcStruct rv = d.getStruct("review");
+        if (rv == null || rv.getDouble("review_rating_stars") == null) return "";
+        return Geo.fmt(rv.getDouble("review_rating_stars").doubleValue(), 1) + " z 5 (" + rv.getInt("total", 0) + " hodnocení)";
     }
 
     static Place placeOf(FrpcStruct d, double lon, double lat) {
@@ -191,17 +233,19 @@ public class Mapy extends MIDlet implements CommandListener {
         return p;
     }
 
+    Vector detailPhotos = new Vector();
+    Command photosCommand;
+
     void showDetail(Place p, FrpcStruct d) {
         detailPlace = p;
-        Form f = new Form(p.title.length() > 0 ? p.title : "Detail");
+        final Form f = new Form(p.title.length() > 0 ? p.title : "Detail");
+        detailPhotos = d == null ? new Vector() : Photos.gallery(d);
+        final String header = d == null ? null : Photos.header(d);
         if (d != null) {
             add(f, null, d.getString("title", p.title));
             add(f, null, d.getString("subtitle", ""));
             add(f, "Adresa", d.getString("address", ""));
-            FrpcStruct rv = d.getStruct("review");
-            if (rv != null && rv.getDouble("review_rating_stars") != null) {
-                add(f, "Hodnocení", Geo.fmt(rv.getDouble("review_rating_stars").doubleValue(), 1) + " z 5 (" + rv.getInt("total", 0) + " hodnocení)");
-            }
+            add(f, "Hodnocení", rating(d));
             String desc = d.getString("description", "");
             if (desc.length() > 1500) desc = desc.substring(0, 1500) + "...";
             add(f, null, stripTags(desc));
@@ -220,6 +264,25 @@ public class Mapy extends MIDlet implements CommandListener {
         f.addCommand(BACK);
         f.addCommand(SHOW);
         if (p.osm && d == null) f.addCommand(MAPY_DETAIL);
+        photosCommand = null;
+        if (detailPhotos.size() > 0) {
+            photosCommand = new Command("Fotky (" + detailPhotos.size() + ")", Command.SCREEN, 1);
+            f.addCommand(photosCommand);
+        }
+        if (header != null) {
+            // the text first, then the photo on top when it arrives
+            new Thread() {
+                public void run() {
+                    try {
+                        Image im = Photos.load(Photos.sized(header, 120), "foto detailu");
+                        ImageItem it = new ImageItem(null, im, Item.LAYOUT_CENTER | Item.LAYOUT_NEWLINE_AFTER, "foto");
+                        if (f.size() > 0) f.insert(0, it); else f.append(it);
+                    } catch (Throwable e) {
+                        Log.add("detail photo: " + e);
+                    }
+                }
+            }.start();
+        }
         f.setCommandListener(this);
         detailForm = f;
         display.setCurrent(f);
@@ -290,7 +353,9 @@ public class Mapy extends MIDlet implements CommandListener {
     }
 
     TextField fPc, fUa;
-    ChoiceGroup fPanel;
+    ChoiceGroup fPanel, fCache, fPreview;
+    static final int[] CACHE_MB = { 0, 4, 8, 16, 32, 48 };
+    static final Command CLEAR_CACHE = new Command("Smazat mezipaměť", Command.SCREEN, 3);
     static final int[] PANEL_WIDTHS = { 110, 130, 150, 180, 210, 240 };
 
     void settings() {
@@ -306,10 +371,23 @@ public class Mapy extends MIDlet implements CommandListener {
         fPanel = new ChoiceGroup("Šířka levého panelu", Choice.POPUP, labels, null);
         fPanel.setSelectedIndex(sel, true);
         f.append(fPanel);
+        String[] cl = new String[CACHE_MB.length];
+        int cs = 3;
+        for (int i = 0; i < cl.length; i++) {
+            cl[i] = CACHE_MB[i] == 0 ? "vypnuto" : CACHE_MB[i] + " MB";
+            if (CACHE_MB[i] == Settings.cacheMB) cs = i;
+        }
+        fCache = new ChoiceGroup("Mezipaměť dlaždic a fotek v telefonu (" + DiskCache.summary() + ")", Choice.POPUP, cl, null);
+        fCache.setSelectedIndex(cs, true);
+        f.append(fCache);
+        fPreview = new ChoiceGroup("Náhled při najetí kurzorem (fotka, hodnocení)", Choice.POPUP, new String[] { "zapnuto", "vypnuto" }, null);
+        fPreview.setSelectedIndex(Settings.preview ? 0 : 1, true);
+        f.append(fPreview);
         f.append(fPc);
         f.append(fUa);
         f.append(new StringItem(null, "Mapa a body zájmu: © OpenStreetMap contributors (openstreetmap.org/copyright). Hledání a detaily: Mapy.com."));
         f.addCommand(SAVE);
+        f.addCommand(CLEAR_CACHE);
         f.addCommand(BACK);
         f.setCommandListener(this);
         display.setCurrent(f);
@@ -329,16 +407,26 @@ public class Mapy extends MIDlet implements CommandListener {
             } else showMap();
         } else if (d == detailForm) {
             if (c == SHOW) { map.show(detailPlace, !detailPlace.osm); showMap(); }
-            else if (c == MAPY_DETAIL) mapyDetailFor(detailPlace);
+            else if (c == MAPY_DETAIL) detail(detailPlace);
+            else if (c == photosCommand) display.setCurrent(new PhotoCanvas(this, detailForm, detailPlace.title, detailPhotos));
             else showMap();
         } else if (c == SAVE) {
             Settings.pc = fPc.getString().trim();
             String ua = fUa.getString().trim();
             Settings.userAgent = ua.length() > 0 ? ua : Settings.DEFAULT_UA;
             Settings.panelWidth = PANEL_WIDTHS[fPanel.getSelectedIndex()];
+            Settings.cacheMB = CACHE_MB[fCache.getSelectedIndex()];
+            Settings.preview = fPreview.getSelectedIndex() == 0;
             Settings.save();
             map.repaint();
             showMap();
+        } else if (c == CLEAR_CACHE) {
+            DiskCache.clear();
+            Photos.images.clear();
+            details.clear();
+            Alert a = new Alert("Mezipaměť", "Smazáno.", null, AlertType.INFO);
+            a.setTimeout(2000);
+            display.setCurrent(a, map);
         } else if (c == SEND) {
             sendLog();
         } else {

@@ -6,7 +6,7 @@ import javax.microedition.rms.*;
 /** Settings and the last map view, in RMS. */
 public class Settings {
     /** OSM's tile policy wants a User-Agent naming the app; we use our own everywhere. */
-    public static final String DEFAULT_UA = "Mapy9300/0.6 (+https://github.com/janseris/mapy-j2me)";
+    public static final String DEFAULT_UA = "Mapy9300/0.7 (+https://github.com/janseris/mapy-j2me)";
 
     public static String pc = "192.168.137.1:8000";
     public static String userAgent = DEFAULT_UA;
@@ -16,6 +16,10 @@ public class Settings {
     public static int zoom = 15;
     /** Width of the map's left info panel in pixels. */
     public static int panelWidth = 150;
+    /** Disk (RMS) cache for tiles and photos, MB; 0 = off. */
+    public static int cacheMB = 16;
+    /** Show a thumbnail and rating when the cursor rests on an object. */
+    public static boolean preview = true;
 
     public static void load() {
         try {
@@ -29,7 +33,11 @@ public class Settings {
                 lat = in.readDouble();
                 lon = in.readDouble();
                 zoom = in.readInt();
-                try { panelWidth = in.readInt(); } catch (EOFException e) {}
+                try {
+                    panelWidth = in.readInt();
+                    cacheMB = in.readInt();
+                    preview = in.readBoolean();
+                } catch (EOFException e) {}
             }
             rs.closeRecordStore();
         } catch (Throwable e) {
@@ -49,6 +57,8 @@ public class Settings {
             o.writeDouble(lon);
             o.writeInt(zoom);
             o.writeInt(panelWidth);
+            o.writeInt(cacheMB);
+            o.writeBoolean(preview);
             byte[] b = bo.toByteArray();
             RecordStore rs = RecordStore.openRecordStore("mapy", true);
             if (rs.getNumRecords() == 0) rs.addRecord(b, 0, b.length);
