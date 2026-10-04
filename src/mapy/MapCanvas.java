@@ -19,7 +19,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     static final int T = Geo.TILE, CACHE_MAX = 24, POI_ZOOM = 16, PAN = 64, PICK_RADIUS = 28;
 
     static final Command SEARCH = new Command("Hledat", Command.SCREEN, 1);
-    static final Command SELECT = new Command("Vybrat / detail", Command.SCREEN, 2);
+    static final Command SELECT = new Command("Otevřít", Command.SCREEN, 2);
     static final Command ZOOM_IN = new Command("Přiblížit", Command.SCREEN, 3);
     static final Command ZOOM_OUT = new Command("Oddálit", Command.SCREEN, 4);
     static final Command NEXT = new Command("Další bod", Command.SCREEN, 5);
@@ -81,11 +81,16 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             Geo.xToLon(cx + w / 2 + gx, zoom), Geo.yToLat(cy - h / 2 - gy, zoom) };
     }
 
+    /** Zooms keeping the map point under the cursor where it is. */
     void setZoom(int z) {
         if (z < 3 || z > 18 || z == zoom) return;
-        double lat = centerLat(), lon = centerLon();
+        int w = getWidth(), h = getHeight();
+        double px = cx - w / 2 + mx, py = cy - h / 2 + my;          // cursor, world pixels
+        double lon = Geo.xToLon(px, zoom), lat = Geo.yToLat(py, zoom);
         zoom = z;
-        center(lat, lon);
+        cx = Geo.lonToX(lon, zoom) - mx + w / 2;
+        cy = Geo.latToY(lat, zoom) - my + h / 2;
+        hovered = null;
         viewChanged();
     }
 
@@ -95,6 +100,10 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         selected = p;
         if (p.zoom > 0 && (p.zoom > zoom || zoom < 13)) zoom = Math.max(13, Math.min(17, p.zoom));
         center(p.lat, p.lon);
+        initCursor();
+        mx = getWidth() / 2;
+        my = getHeight() / 2 - (p.osm ? 0 : 12);
+        hovered = p;
         viewChanged();
     }
 
@@ -208,11 +217,11 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     public void commandAction(Command c, Displayable d) {
         if (c == SEARCH) app.search("");
-        else if (c == SELECT) select();
+        else if (c == SELECT) click();
         else if (c == ZOOM_IN) setZoom(zoom + 1);
         else if (c == ZOOM_OUT) setZoom(zoom - 1);
         else if (c == NEXT) next();
-        else if (c == HERE) app.whatsHere(centerLon(), centerLat(), zoom);
+        else if (c == HERE) { initCursor(); int w = getWidth(), h = getHeight(); app.whatsHere(Geo.xToLon(cx - w / 2 + mx, zoom), Geo.yToLat(cy - h / 2 + my, zoom), zoom); }
         else if (c == POIS) {
             Settings.pois = !Settings.pois;
             Settings.save();
@@ -231,69 +240,134 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         else if (c == EXIT) app.exit();
     }
 
-    protected void keyPressed(int key) { key(key, false); }
-    protected void keyRepeated(int key) { key(key, true); }
+    // ---- the cursor ("mouse"): arrows move it, at the edge the map scrolls ----
+
+    static final int EDGE = 14;
+    int mx = -1, my = -1;               // cursor, screen pixels
+    int repeatCount;
+    Place hovered;
+
+    void initCursor() {
+        if (mx < 0) { mx = getWidth() / 2; my = (getHeight() - stripHeight()) / 2; }
+    }
+
+    protected void keyPressed(int key) { repeatCount = 0; key(key, false); }
+    protected void keyRepeated(int key) { repeatCount++; key(key, true); }
 
     void key(int key, boolean repeat) {
+        initCursor();
         int a = 0;
         try { a = getGameAction(key); } catch (Throwable e) {}
-        if (key == '+' || key == '3' || key == '=') { if (!repeat) setZoom(zoom + 1); return; }
-        if (key == '-' || key == '1') { if (!repeat) setZoom(zoom - 1); return; }
+        // zoom: Chr+Up / Chr+Down (blue + and - on the arrow keys), also + - = 3 1
+        if (key == '+' || key == '=' || key == '3' || key == -10 || key == -36) { if (!repeat) setZoom(zoom + 1); return; }
+        if (key == '-' || key == '1' || key == -11 || key == -37) { if (!repeat) setZoom(zoom - 1); return; }
         if (key == 'n' || key == 'N' || key == ' ') { if (!repeat) next(); return; }
-        if (key == 10 || key == 13 || a == FIRE) { if (!repeat) select(); return; }
-        if (a == LEFT) cx -= PAN; else if (a == RIGHT) cx += PAN;
-        else if (a == UP) cy -= PAN; else if (a == DOWN) cy += PAN;
-        else if (key > 32 && key < 0x10000 && !repeat && Character.isDigit((char) key) == false) {
+        if (key == 10 || key == 13 || a == FIRE) { if (!repeat) click(); return; }
+        if (a == LEFT || a == RIGHT || a == UP || a == DOWN) {
+            int step = repeatCount < 3 ? 6 : repeatCount < 10 ? 14 : 24;
+            int dx = a == LEFT ? -step : a == RIGHT ? step : 0, dy = a == UP ? -step : a == DOWN ? step : 0;
+            moveCursor(dx, dy);
+            return;
+        }
+        if (key > 32 && key < 0x10000 && !repeat && !Character.isDigit((char) key)) {
             app.search(String.valueOf((char) key));     // typing starts a search
             return;
         }
-        else return;
+        if (!repeat) {
+            String name = "";
+            try { name = getKeyName(key); } catch (Throwable e) {}
+            Log.add("key " + key + " (" + name + ") game action " + a + ": not used");
+            status = "klávesa " + key + " " + name;
+            repaintStrip();
+        }
+    }
+
+    /** Moves the cursor; past the edge the map scrolls instead. */
+    void moveCursor(int dx, int dy) {
+        int w = getWidth(), h = getHeight() - stripHeight();
+        int ox = mx, oy = my;
+        int nx = mx + dx, ny = my + dy;
+        boolean panned = false;
+        if (nx < EDGE) { cx += nx - EDGE; nx = EDGE; panned = true; }
+        if (nx > w - EDGE) { cx += nx - (w - EDGE); nx = w - EDGE; panned = true; }
+        if (ny < EDGE) { cy += ny - EDGE; ny = EDGE; panned = true; }
+        if (ny > h - EDGE) { cy += ny - (h - EDGE); ny = h - EDGE; panned = true; }
         int max = T << zoom;
         if (cy < 0) cy = 0;
         if (cy > max) cy = max;
-        viewChanged();
-    }
-
-    /** Selects the object nearest to the crosshair, or opens the detail of the selected one. */
-    void select() {
-        Place near = nearest();
-        if (selected != null && (near == null || near == selected) && onScreen(selected)) {
-            app.detail(selected);
-            return;
-        }
-        if (near != null) {
-            selected = near;
-            repaint();
+        mx = nx; my = ny;
+        Place before = hovered;
+        hovered = objectAt(mx, my, 12);
+        if (panned) {
+            viewChanged();
+        } else if (hovered != before) {
+            repaint();                      // hover state changes the label and the strip
         } else {
-            app.whatsHere(centerLon(), centerLat(), zoom);
+            repaintCursor(ox, oy);
+            repaintCursor(mx, my);
         }
     }
 
-    Place nearest() {
+    void repaintCursor(int x, int y) {
+        repaint(x - 2, y - 2, 16, 20);
+    }
+
+    /** Click: open the hovered object, or "what's here" at the cursor. */
+    void click() {
+        initCursor();
+        Place p = objectAt(mx, my, 12);
+        if (p != null) {
+            selected = p;
+            repaint();
+            app.detail(p);
+        } else {
+            int w = getWidth(), h = getHeight();
+            double px = cx - w / 2 + mx, py = cy - h / 2 + my;
+            app.whatsHere(Geo.xToLon(px, zoom), Geo.yToLat(py, zoom), zoom);
+        }
+    }
+
+    // built-in pointer, when the device has one (KEmulator; the 9300's Java has no pointer events)
+    protected void pointerMoved(int x, int y) { moveCursor(x - mx, y - my); }
+    protected void pointerDragged(int x, int y) { moveCursor(x - mx, y - my); }
+    protected void pointerPressed(int x, int y) { initCursor(); moveCursor(x - mx, y - my); click(); }
+
+    void select() { click(); }
+
+    /** The object nearest to screen point x, y within r pixels. */
+    Place objectAt(int x, int y, int r) {
+        int w = getWidth(), h = getHeight();
+        double ox = cx - w / 2, oy = cy - h / 2;
         Place best = null;
-        double bd = PICK_RADIUS * PICK_RADIUS;
+        double bd = r * r;
         Vector all = objects();
         for (int i = 0; i < all.size(); i++) {
             Place p = (Place) all.elementAt(i);
-            double dx = Geo.lonToX(p.lon, zoom) - cx, dy = Geo.latToY(p.lat, zoom) - cy, d = dx * dx + dy * dy;
+            double dx = Geo.lonToX(p.lon, zoom) - ox - x, dy = Geo.latToY(p.lat, zoom) - oy - y;
+            if (!p.osm) dy += 12;               // a pin's head is above its point
+            double d = dx * dx + dy * dy;
             if (d < bd) { bd = d; best = p; }
         }
         return best;
     }
 
-    /** Cycles through the objects on screen, nearest to the centre first. */
+    /** Moves the cursor to the next object on screen, nearest to the centre first. */
     void next() {
+        initCursor();
         Vector all = objects(), vis = new Vector();
         for (int i = 0; i < all.size(); i++) if (onScreen((Place) all.elementAt(i))) vis.addElement(all.elementAt(i));
         if (vis.size() == 0) { status = zoom < POI_ZOOM ? "přibliž na " + POI_ZOOM + " pro body zájmu" : "žádné body"; repaintStrip(); return; }
-        // sort by distance from centre (small list: selection sort)
         for (int i = 0; i < vis.size(); i++) {
             int m = i;
             for (int j = i + 1; j < vis.size(); j++) if (dist2((Place) vis.elementAt(j)) < dist2((Place) vis.elementAt(m))) m = j;
             Object t = vis.elementAt(i); vis.setElementAt(vis.elementAt(m), i); vis.setElementAt(t, m);
         }
         if (nextIndex >= vis.size()) nextIndex = 0;
-        selected = (Place) vis.elementAt(nextIndex++);
+        Place p = (Place) vis.elementAt(nextIndex++);
+        int w = getWidth(), h = getHeight();
+        mx = (int) (Geo.lonToX(p.lon, zoom) - (cx - w / 2));
+        my = (int) (Geo.latToY(p.lat, zoom) - (cy - h / 2)) - (p.osm ? 0 : 12);
+        hovered = p;
         repaint();
     }
 
@@ -355,26 +429,42 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 else { g.setColor(0xCFCCC6); g.drawRect(px, py, T - 1, T - 1); }
             }
         }
-        // POIs
+        // objects; the hovered one is bigger, outlined and labelled like a link
+        Place hov = hovered;
         Vector ps = pois;
         for (int i = 0; i < ps.size(); i++) {
             Place p = (Place) ps.elementAt(i);
-            if (p == selected) continue;
+            if (p == hov || p == selected) continue;
             int px = (int) (Geo.lonToX(p.lon, zoom) - ox), py = (int) (Geo.latToY(p.lat, zoom) - oy);
             if (px < -6 || py < -6 || px > w + 6 || py > h + 6) continue;
             dot(g, px, py, 4, Kinds.color(p));
         }
-        if (marker != null && marker != selected) pin(g, (int) (Geo.lonToX(marker.lon, zoom) - ox), (int) (Geo.latToY(marker.lat, zoom) - oy), 0xD32F2F);
-        if (selected != null) {
-            int px = (int) (Geo.lonToX(selected.lon, zoom) - ox), py = (int) (Geo.latToY(selected.lat, zoom) - oy);
-            if (selected.osm) dot(g, px, py, 7, Kinds.color(selected));
-            else pin(g, px, py, 0xD32F2F);
-            label(g, selected.title, px, py - (selected.osm ? 10 : 22), w);
+        if (marker != null && marker != hov) pin(g, (int) (Geo.lonToX(marker.lon, zoom) - ox), (int) (Geo.latToY(marker.lat, zoom) - oy), 0xD32F2F);
+        if (selected != null && selected != hov && selected != marker && selected.osm) {
+            dot(g, (int) (Geo.lonToX(selected.lon, zoom) - ox), (int) (Geo.latToY(selected.lat, zoom) - oy), 5, Kinds.color(selected));
         }
-        // crosshair
-        g.setColor(0x202020);
-        g.drawLine(w / 2 - 8, h / 2, w / 2 - 3, h / 2); g.drawLine(w / 2 + 3, h / 2, w / 2 + 8, h / 2);
-        g.drawLine(w / 2, h / 2 - 8, w / 2, h / 2 - 3); g.drawLine(w / 2, h / 2 + 3, w / 2, h / 2 + 8);
+        if (hov != null) {
+            int px = (int) (Geo.lonToX(hov.lon, zoom) - ox), py = (int) (Geo.latToY(hov.lat, zoom) - oy);
+            if (hov.osm) {
+                g.setColor(0x1565C0);
+                g.fillArc(px - 9, py - 9, 18, 18, 0, 360);
+                dot(g, px, py, 6, Kinds.color(hov));
+            } else {
+                pin(g, px, py, 0xB71C1C);
+            }
+            label(g, hov.title, px, py - (hov.osm ? 11 : 23), w, true);
+        }
+        cursor(g, mx < 0 ? w / 2 : mx, my < 0 ? (h - stripHeight()) / 2 : my);
+    }
+
+    /** Arrow mouse pointer with its tip at x, y. */
+    static void cursor(Graphics g, int x, int y) {
+        g.setColor(0x000000);
+        g.fillTriangle(x, y, x, y + 15, x + 10, y + 11);
+        g.fillRect(x + 4, y + 10, 3, 7);
+        g.setColor(0xFFFFFF);
+        g.fillTriangle(x + 1, y + 3, x + 1, y + 12, x + 7, y + 10);
+        g.drawLine(x + 5, y + 11, x + 5, y + 15);
     }
 
     static void dot(Graphics g, int x, int y, int r, int color) {
@@ -395,7 +485,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         g.fillArc(x - 2, y - 16, 4, 4, 0, 360);
     }
 
-    void label(Graphics g, String s, int x, int y, int w) {
+    void label(Graphics g, String s, int x, int y, int w, boolean link) {
         Font f = small();
         g.setFont(f);
         if (s.length() > 40) s = s.substring(0, 39) + "...";
@@ -403,10 +493,11 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         int lx = Math.max(0, Math.min(w - tw, x - tw / 2)), ly = Math.max(0, y - fh);
         g.setColor(0xFFFFFF);
         g.fillRect(lx, ly, tw, fh + 1);
-        g.setColor(0x606060);
+        g.setColor(link ? 0x1565C0 : 0x606060);
         g.drawRect(lx, ly, tw, fh + 1);
-        g.setColor(0x000000);
+        g.setColor(link ? 0x1565C0 : 0x000000);
         g.drawString(s, lx + 3, ly + 1, Graphics.TOP | Graphics.LEFT);
+        if (link) g.drawLine(lx + 3, ly + fh - 1, lx + tw - 4, ly + fh - 1);     // underline
     }
 
     void paintStrip(Graphics g, int w, int h, int sh) {
@@ -419,8 +510,9 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         String prog = Net.progressText();
         if (prog.length() > 0) line1 = prog;
         else if (status.length() > 0) line1 = status;
-        else if (selected != null) line1 = selected.title + (selected.subtitle.length() > 0 ? " - " + selected.subtitle : "") + "   [Enter = detail]";
-        else line1 = Settings.pois && zoom < POI_ZOOM ? "Přibliž (+) pro body zájmu, Enter = co je tady" : "Enter = vybrat bod / co je tady, N = další bod, písmena = hledat";
+        else if (hovered != null) line1 = hovered.title + (hovered.subtitle.length() > 0 ? " - " + hovered.subtitle : "") + "   [Enter = otevřít]";
+        else line1 = Settings.pois && zoom < POI_ZOOM ? "Šipky = kurzor, Chr+šipka nahoru/dolů = zoom (body zájmu od " + POI_ZOOM + "), Enter = co je tady"
+            : "Šipky = kurzor, Enter = otevřít / co je tady, N = další bod, písmena = hledat";
         g.setColor(prog.length() > 0 ? 0xFCEE74 : 0xFFFFFF);
         g.drawString(line1.length() > 110 ? line1.substring(0, 110) : line1, 3, h - sh + 1, Graphics.TOP | Graphics.LEFT);
         g.setColor(0xB5BAC1);
