@@ -3,12 +3,15 @@
 A map app for the **Nokia 9300 / 9500 Communicator** (Series 80 v2, Symbian 7.0s, J2ME MIDP 2.0),
 inspired by the Mapy.com Android app.
 
-**Demo 0.5:**
+**Demo 0.6:**
 
 - **Map:** OpenStreetMap tiles (`tile.openstreetmap.org`), panning and zoom, up to 24 tiles in memory.
-- **Points of interest overlay:** named shops, restaurants, hotels, museums... from OpenStreetMap
-  (Overpass API), shown as coloured dots from zoom 16. Select one to see its name and type, open its
-  details, and look it up in Mapy.com.
+- **Points of interest overlay** (from zoom 16): restaurants, cafés, pubs, accommodation, parking,
+  drinking water, playgrounds, monuments, churches, bells, museums, galleries, theatres, shelters,
+  bunkers, city gates, parks, shops and services. Positions and types come from OpenStreetMap
+  (Overpass API); they are drawn with the **Mapy.com map icons** (`res/poi_icons16.png`, made from the
+  icons the Mapy.com app loads from `api.mapy.cz/poiimg/icon`). A click opens the same place in
+  Mapy.com (search by name nearby, then `getDetail`); without a match it shows the OSM data.
 - **Search:** Mapy.com suggestions (`vectmap.mapy.cz/rpc`, FastRPC `suggest`) near the map view;
   the chosen result gets a red pin.
 - **Place detail:** Mapy.com `getDetail` (address, rating, description, facts).
@@ -48,12 +51,13 @@ Up, -1), so zoom is on the side buttons and `+` / `-`.
   another thread) after 15 s without progress, 3 attempts, a short pause after each request so the
   phone keeps answering the PC's USB keep-alive. Progress is shown in the bottom strip, and only that
   strip (or the arriving tile) is repainted while loading.
-- Our own `User-Agent` (`Mapy9300/0.5 (+https://github.com/janseris/mapy-j2me)`), as OSM's tile and
+- Our own `User-Agent` (`Mapy9300/0.6 (+https://github.com/janseris/mapy-j2me)`), as OSM's tile and
   Overpass policies require; tiles only for the visible area, no prefetching.
 - Mapy.com calls: the FastRPC requests captured from the Android app (encoder verified byte for byte
   against the capture), without key or login.
 
-Credits: map data and POIs © OpenStreetMap contributors (ODbL). Search and details: Mapy.com (Seznam.cz).
+Credits: map data and POIs © OpenStreetMap contributors (ODbL). Search, details and the POI icons:
+Mapy.com (Seznam.cz).
 This is a non-commercial hobby project, not affiliated with Seznam.cz.
 
 ## Build

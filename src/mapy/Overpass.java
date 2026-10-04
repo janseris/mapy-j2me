@@ -10,19 +10,28 @@ import java.util.Vector;
  */
 public class Overpass {
     static final String URL = "https://overpass-api.de/api/interpreter?data=";
-    public static final int MAX = 80;
+    public static final int MAX = 150;
+
+    /** Columns after ::type, ::id, ::lat, ::lon. The first KIND_TAGS of them decide the kind. */
+    static final String[] TAGS = { "name", "amenity", "shop", "tourism", "historic", "leisure", "military",
+        "cuisine", "opening_hours", "website", "phone" };
+    static final int KIND_FROM = 1, KIND_TO = 6;
 
     /** south, west, north, east */
     public static Vector pois(double s, double w, double n, double e) throws IOException {
-        String box = Geo.fmt(s, 5) + "," + Geo.fmt(w, 5) + "," + Geo.fmt(n, 5) + "," + Geo.fmt(e, 5);
-        String q = "[out:csv(::id,::lat,::lon,name,amenity,shop,tourism,cuisine,opening_hours,website,phone;false;\"|\")][timeout:20];"
-            + "(node[name][amenity](" + box + ");node[name][shop](" + box + ");node[name][tourism](" + box + "););out " + MAX + ";";
+        String box = "(" + Geo.fmt(s, 5) + "," + Geo.fmt(w, 5) + "," + Geo.fmt(n, 5) + "," + Geo.fmt(e, 5) + ")";
+        StringBuffer cols = new StringBuffer("::type,::id,::lat,::lon");
+        for (int i = 0; i < TAGS.length; i++) cols.append(',').append(TAGS[i]);
+        // what the Mapy.com app shows on the map: businesses, sights, services, parks, water taps, parking...
+        String q = "[out:csv(" + cols + ";false;\"|\")][timeout:25];("
+            + "nwr[name][amenity]" + box + ";nwr[name][shop]" + box + ";nwr[name][tourism]" + box + ";"
+            + "nwr[historic]" + box + ";nwr[leisure~\"^(park|playground|garden)$\"]" + box + ";nwr[military=bunker]" + box + ";"
+            + "node[amenity~\"^(drinking_water|parking|shelter|toilets|atm|charging_station)$\"]" + box + ";"
+            + "way[amenity=parking]" + box + ";);out center " + MAX + ";";
         Net.Response r = Net.get(URL + Net.encode(q), "body zájmu (OSM)");
         if (r.code != 200) throw new IOException("Overpass HTTP " + r.code);
         return parse(Frpc.utf8Decode(r.body, 0, r.body.length));
     }
-
-    static final String[] KEYS = { "name", "amenity", "shop", "tourism", "cuisine", "opening_hours", "website", "phone" };
 
     static Vector parse(String text) {
         Vector out = new Vector();
@@ -33,20 +42,23 @@ public class Overpass {
             String line = text.substring(start, end);
             start = end + 1;
             String[] f = split(line, '|');
-            if (f.length < 4) continue;
+            if (f.length < 5) continue;
             try {
                 Place p = new Place();
                 p.osm = true;
-                p.id = Long.parseLong(f[0].trim());
-                p.lat = Double.parseDouble(f[1]);
-                p.lon = Double.parseDouble(f[2]);
-                p.title = f[3];
-                String kind = f.length > 4 && f[4].length() > 0 ? f[4] : f.length > 5 && f[5].length() > 0 ? f[5] : f.length > 6 ? f[6] : "";
-                p.kind = kind;
-                p.subtitle = Kinds.label(f.length > 4 ? f[4] : "", f.length > 5 ? f[5] : "", f.length > 6 ? f[6] : "");
+                p.id = Long.parseLong(f[1].trim());
+                p.lat = Double.parseDouble(f[2]);
+                p.lon = Double.parseDouble(f[3]);
+                String[] t = new String[TAGS.length];
+                for (int i = 0; i < TAGS.length; i++) t[i] = 4 + i < f.length ? f[4 + i] : "";
+                for (int i = KIND_FROM; i <= KIND_TO && p.kind.length() == 0; i++) {
+                    if (t[i].length() > 0) p.kind = TAGS[i] + "=" + t[i];
+                }
+                p.subtitle = Kinds.label(p.kind);
+                p.title = t[0].length() > 0 ? t[0] : p.subtitle;
                 StringBuffer tags = new StringBuffer();
-                for (int i = 3; i < f.length && i - 3 < KEYS.length; i++) {
-                    if (f[i].length() > 0) tags.append(KEYS[i - 3]).append(" = ").append(f[i]).append('\n');
+                for (int i = 0; i < TAGS.length; i++) {
+                    if (t[i].length() > 0) tags.append(TAGS[i]).append(" = ").append(t[i]).append('\n');
                 }
                 p.tags = tags.toString();
                 out.addElement(p);

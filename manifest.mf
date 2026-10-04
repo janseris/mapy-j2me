@@ -1,7 +1,7 @@
 MIDlet-1: Mapy 9300, /icon.png, mapy.Mapy
 MIDlet-Name: Mapy 9300
 MIDlet-Vendor: mapy-j2me
-MIDlet-Version: 0.5
+MIDlet-Version: 0.6
 MIDlet-Icon: /icon.png
 MicroEdition-Configuration: CLDC-1.1
 MicroEdition-Profile: MIDP-2.0

@@ -550,20 +550,23 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             Place p = (Place) ps.elementAt(i);
             if (p == hov) continue;
             int px = sx(p), py = sy(p);
-            if (px < -6 || py < -6 || px > w + 6 || py > h + 6) continue;
-            dot(g, px, py, p == selected ? 5 : 4, Kinds.color(p));
+            if (px < -9 || py < -9 || px > w + 9 || py > h + 9) continue;
+            if (p == selected) { g.setColor(0x1565C0); g.drawArc(px - 10, py - 10, 19, 19, 0, 360); }
+            Kinds.draw(g, p.kind, px, py);
         }
         if (marker != null && marker != hov) pin(g, sx(marker), sy(marker), 0xD32F2F);
         if (hov != null) {
             int px = sx(hov), py = sy(hov);
             if (hov.osm) {
                 g.setColor(0x1565C0);
-                g.fillArc(px - 9, py - 9, 18, 18, 0, 360);
-                dot(g, px, py, 6, Kinds.color(hov));
+                g.fillArc(px - 12, py - 12, 24, 24, 0, 360);
+                g.setColor(0xFFFFFF);
+                g.fillArc(px - 10, py - 10, 20, 20, 0, 360);
+                Kinds.draw(g, hov.kind, px, py);
             } else {
                 pin(g, px, py, 0xB71C1C);
             }
-            label(g, hov.title, px, py - (hov.osm ? 11 : 23), w);
+            label(g, hov.title, px, py - (hov.osm ? 13 : 23), w);
         }
         cursor(g, mx < 0 ? w / 2 : mx, my < 0 ? h / 2 : my);
     }

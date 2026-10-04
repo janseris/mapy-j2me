@@ -123,8 +123,8 @@ public class Mapy extends MIDlet implements CommandListener {
 
     void detail(final Place p) {
         if (p.osm) {
-            // OSM object: its tags straight away; Mapy.com detail on request
-            showDetail(p, null);
+            // object from the overlay: open the same place in Mapy.com (falls back to the OSM data)
+            mapyDetailFor(p);
             return;
         }
         new Task() {
@@ -151,6 +151,14 @@ public class Mapy extends MIDlet implements CommandListener {
         new Task() {
             String name() { return "Detail z Mapy.com"; }
             void work() throws Exception {
+                try {
+                    lookup();
+                } catch (Exception e) {
+                    Log.add("Mapy.com lookup for " + osm.title + " failed: " + e);
+                    showDetail(osm, null);
+                }
+            }
+            void lookup() throws Exception {
                 double d = 0.002;
                 Vector r = MapyApi.suggest(osm.title, osm.lon, osm.lat, new double[] { osm.lon - d, osm.lat - d, osm.lon + d, osm.lat + d }, 17);
                 Place best = null;
@@ -161,9 +169,8 @@ public class Mapy extends MIDlet implements CommandListener {
                     if (m < bd && c.source.length() > 0) { bd = m; best = c; }
                 }
                 if (best == null) {
-                    // nothing by name: what Mapy.com has at that spot
-                    FrpcStruct det = MapyApi.detailAt(osm.lon, osm.lat, 18);
-                    showDetail(placeOf(det, osm.lon, osm.lat), det);
+                    Log.add("no Mapy.com match for " + osm.title + ", showing OSM data");
+                    showDetail(osm, null);
                     return;
                 }
                 Log.add("mapy match for " + osm.title + ": " + best.source + "/" + best.id + " (" + (int) bd + " m)");
@@ -212,7 +219,7 @@ public class Mapy extends MIDlet implements CommandListener {
         add(f, "Poloha", Geo.format(p.lat, p.lon));
         f.addCommand(BACK);
         f.addCommand(SHOW);
-        if (p.osm) f.addCommand(MAPY_DETAIL);
+        if (p.osm && d == null) f.addCommand(MAPY_DETAIL);
         f.setCommandListener(this);
         detailForm = f;
         display.setCurrent(f);
