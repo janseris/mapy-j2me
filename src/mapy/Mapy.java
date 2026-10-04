@@ -17,6 +17,8 @@ public class Mapy extends MIDlet implements CommandListener {
     static final Command MAPY_DETAIL = new Command("Detail z Mapy.com", Command.SCREEN, 2);
     static final Command SAVE = new Command("Uložit", Command.SCREEN, 1);
     static final Command SEND = new Command("Odeslat log na PC", Command.SCREEN, 2);
+    static final Command ROUTE_WALK = new Command("Trasa sem pěšky", Command.SCREEN, 2);
+    static final Command ROUTE_CAR = new Command("Trasa sem autem", Command.SCREEN, 2);
 
     Display display;
     MapCanvas map;
@@ -263,6 +265,8 @@ public class Mapy extends MIDlet implements CommandListener {
         add(f, "Poloha", Geo.format(p.lat, p.lon));
         f.addCommand(BACK);
         f.addCommand(SHOW);
+        f.addCommand(ROUTE_WALK);
+        f.addCommand(ROUTE_CAR);
         if (p.osm && d == null) f.addCommand(MAPY_DETAIL);
         photosCommand = null;
         if (detailPhotos.size() > 0) {
@@ -325,6 +329,52 @@ public class Mapy extends MIDlet implements CommandListener {
         return b.toString();
     }
 
+    // ---------------------------------------------------------------- routes
+
+    /** Route to a place: from the GPS position, or (without GPS) from the map cursor. */
+    void planRoute(final Place to, final boolean car) {
+        new Task() {
+            String name() { return "Trasa"; }
+            void work() throws Exception {
+                double fl, fa;
+                Gps g = Gps.instance;
+                if (g.hasFix()) { fl = g.lon; fa = g.lat; }
+                else {
+                    map.initCursor();
+                    fl = Geo.xToLon(map.wx(map.mx), map.zoom);
+                    fa = Geo.yToLat(map.wy(map.my), map.zoom);
+                    Log.add("route from the map cursor (no GPS fix)");
+                }
+                Route r = Route.plan(fl, fa, to.lon, to.lat, car);
+                r.to = to;
+                map.marker = to;
+                map.setRoute(r);
+            }
+        }.go();
+    }
+
+    /** Recalculation during navigation, from the current GPS position. */
+    void reroute() {
+        final Route old = map.route;
+        if (old == null || old.to == null || busy) return;
+        busy = true;
+        new Thread() {
+            public void run() {
+                try {
+                    Gps g = Gps.instance;
+                    Log.add("off route, recalculating");
+                    Route r = Route.plan(g.lon, g.lat, old.to.lon, old.to.lat, old.car);
+                    r.to = old.to;
+                    map.setRoute(r);
+                } catch (Throwable e) {
+                    Log.add("reroute: " + e);
+                } finally {
+                    busy = false;
+                }
+            }
+        }.start();
+    }
+
     // ---------------------------------------------------------------- log, settings
 
     void showLog() {
@@ -352,7 +402,7 @@ public class Mapy extends MIDlet implements CommandListener {
         }.go();
     }
 
-    TextField fPc, fUa;
+    TextField fPc, fUa, fBt;
     ChoiceGroup fPanel, fCache, fPreview;
     static final int[] CACHE_MB = { 0, 4, 8, 16, 32, 48 };
     static final Command CLEAR_CACHE = new Command("Smazat mezipaměť", Command.SCREEN, 3);
@@ -383,9 +433,11 @@ public class Mapy extends MIDlet implements CommandListener {
         fPreview = new ChoiceGroup("Náhled při najetí kurzorem (fotka, hodnocení)", Choice.POPUP, new String[] { "zapnuto", "vypnuto" }, null);
         fPreview.setSelectedIndex(Settings.preview ? 0 : 1, true);
         f.append(fPreview);
+        fBt = new TextField("Bluetooth GPS: adresa (Android: Nastavení > O telefonu > Stav)", Settings.btAddress, 17, TextField.ANY);
+        f.append(fBt);
         f.append(fPc);
         f.append(fUa);
-        f.append(new StringItem(null, "Mapa a body zájmu: © OpenStreetMap contributors (openstreetmap.org/copyright). Hledání a detaily: Mapy.com."));
+        f.append(new StringItem(null, "Mapa, body zájmu a trasy: © OpenStreetMap contributors (openstreetmap.org/copyright), trasy: OSRM na serveru FOSSGIS (routing.openstreetmap.de). Chyba v mapě? openstreetmap.org/fixthemap. Hledání, detaily, fotky a ikony: Mapy.com."));
         f.addCommand(SAVE);
         f.addCommand(CLEAR_CACHE);
         f.addCommand(BACK);
@@ -408,6 +460,8 @@ public class Mapy extends MIDlet implements CommandListener {
         } else if (d == detailForm) {
             if (c == SHOW) { map.show(detailPlace, !detailPlace.osm); showMap(); }
             else if (c == MAPY_DETAIL) detail(detailPlace);
+            else if (c == ROUTE_WALK) planRoute(detailPlace, false);
+            else if (c == ROUTE_CAR) planRoute(detailPlace, true);
             else if (c == photosCommand) display.setCurrent(new PhotoCanvas(this, detailForm, detailPlace.title, detailPhotos));
             else showMap();
         } else if (c == SAVE) {
@@ -415,6 +469,7 @@ public class Mapy extends MIDlet implements CommandListener {
             String ua = fUa.getString().trim();
             Settings.userAgent = ua.length() > 0 ? ua : Settings.DEFAULT_UA;
             Settings.panelWidth = PANEL_WIDTHS[fPanel.getSelectedIndex()];
+            Settings.btAddress = Gps.clean(fBt.getString());
             Settings.cacheMB = CACHE_MB[fCache.getSelectedIndex()];
             Settings.preview = fPreview.getSelectedIndex() == 0;
             Settings.save();

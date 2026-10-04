@@ -18,7 +18,7 @@ import javax.microedition.lcdui.*;
  * While loading only the panel or the arriving tile is repainted (a full-screen repaint loop
  * starved the TLS patch on the 9300).
  */
-public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.Listener {
+public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.Listener, Gps.Listener {
     static final int T = Geo.TILE, CACHE_MAX = 24, POI_ZOOM = 16, BAR = 26, EDGE = 12, HOVER_R = 12;
 
     // the first four go on the 9300's side buttons, top to bottom
@@ -26,6 +26,10 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     static final Command ZOOM_IN = new Command("Přiblížit", Command.SCREEN, 2);
     static final Command ZOOM_OUT = new Command("Oddálit", Command.SCREEN, 3);
     static final Command OPEN = new Command("Otevřít", Command.SCREEN, 4);
+    static final Command MYPOS = new Command("Moje poloha (GPS)", Command.SCREEN, 5);
+    static final Command GPS = new Command("GPS připojit/odpojit", Command.SCREEN, 5);
+    static final Command NAV = new Command("Navigace start/stop", Command.SCREEN, 5);
+    static final Command CLEAR_ROUTE = new Command("Zrušit trasu", Command.SCREEN, 5);
     static final Command NEXT = new Command("Další bod", Command.SCREEN, 5);
     static final Command HERE = new Command("Co je tady", Command.SCREEN, 6);
     static final Command POIS = new Command("Body zájmu zap/vyp", Command.SCREEN, 7);
@@ -85,10 +89,12 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         try { setFullScreenMode(true); } catch (Throwable e) { fullScreen = false; }
         center(Settings.lat, Settings.lon);
         addCommand(SEARCH); addCommand(ZOOM_IN); addCommand(ZOOM_OUT); addCommand(OPEN);
+        addCommand(MYPOS); addCommand(GPS); addCommand(NAV); addCommand(CLEAR_ROUTE);
         addCommand(NEXT); addCommand(HERE); addCommand(POIS); addCommand(FULL); addCommand(RELOAD);
         addCommand(LOG); addCommand(SETTINGS); addCommand(EXIT);
         setCommandListener(this);
         Net.listener = this;
+        Gps.instance.listener = this;
         new Thread(this).start();
     }
 
@@ -276,6 +282,22 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             viewChanged();
         }
         else if (c == FULL) toggleFullScreen();
+        else if (c == GPS) { if (Gps.instance.running) Gps.instance.disconnect(); else Gps.instance.connect(); repaintPanel(); }
+        else if (c == MYPOS) {
+            if (Gps.instance.hasFix()) { follow = true; centerOnGps(); }
+            else { status = "GPS: " + Gps.instance.status; if (!Gps.instance.running) Gps.instance.connect(); repaintPanel(); }
+        }
+        else if (c == NAV) {
+            if (route == null) { status = "Nejdřív naplánuj trasu (detail místa: Trasa sem)"; repaintPanel(); }
+            else {
+                navigating = !navigating;
+                follow = navigating;
+                if (navigating && !Gps.instance.running) Gps.instance.connect();
+                if (navigating && Gps.instance.hasFix()) centerOnGps();
+                repaint();
+            }
+        }
+        else if (c == CLEAR_ROUTE) { route = null; navigating = false; repaint(); }
         else if (c == RELOAD) {
             failed.clear();
             poiFailed = false;
@@ -298,6 +320,63 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (my > mh() - EDGE) my = mh() - EDGE;
         repaint();
         synchronized (wake) { wake.notify(); }
+    }
+
+    // ---------------------------------------------------------------- route, GPS, navigation
+
+    Route route;
+    boolean navigating, follow;
+    double routeAt, offRoute;
+    int offCount;
+    long lastReroute;
+
+    public void setRoute(Route r) {
+        route = r;
+        routeAt = 0;
+        offCount = 0;
+        if (!navigating) fit(r);
+        repaint();
+    }
+
+    /** Zoom and centre so the whole route fits. */
+    void fit(Route r) {
+        double w0 = 999, e0 = -999, s0 = 999, n0 = -999;
+        for (int i = 0; i < r.lon.length; i++) {
+            w0 = Math.min(w0, r.lon[i]); e0 = Math.max(e0, r.lon[i]);
+            s0 = Math.min(s0, r.lat[i]); n0 = Math.max(n0, r.lat[i]);
+        }
+        int z = 17;
+        while (z > 3 && (Geo.lonToX(e0, z) - Geo.lonToX(w0, z) > mw() - 40 || Geo.latToY(s0, z) - Geo.latToY(n0, z) > mh() - 40)) z--;
+        zoom = z;
+        cx = (Geo.lonToX(w0, z) + Geo.lonToX(e0, z)) / 2;
+        cy = (Geo.latToY(n0, z) + Geo.latToY(s0, z)) / 2;
+        viewChanged();
+    }
+
+    void centerOnGps() {
+        Gps g = Gps.instance;
+        if (navigating && zoom < 16) zoom = 17;
+        center(g.lat, g.lon);
+        viewChanged();
+    }
+
+    /** New GPS position (from the GPS thread, at most twice a second). */
+    public void position() {
+        Gps g = Gps.instance;
+        if (g.hasFix() && route != null) {
+            double[] l = route.locate(g.lon, g.lat);
+            offRoute = l[0];
+            routeAt = l[1];
+            double limit = route.car ? 50 : 30;
+            offCount = offRoute > limit ? offCount + 1 : 0;
+            if (navigating && offCount >= 3 && System.currentTimeMillis() - lastReroute > 15000 && route.to != null) {
+                lastReroute = System.currentTimeMillis();
+                offCount = 0;
+                app.reroute();
+            }
+        }
+        if (g.hasFix() && follow) centerOnGps();
+        else repaint();
     }
 
     // ---------------------------------------------------------------- keys and the cursor
@@ -403,6 +482,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         hovered = objectAt(mx, my, HOVER_R);
         if (hovered != before) hoverChanged(hovered);
         if (panned) {
+            follow = false;
             viewChanged();
         } else if (hovered != before) {
             repaint();                          // the hover highlight and the panel change
@@ -573,6 +653,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 else { g.setColor(0xCFCCC6); g.drawRect(px, py, T - 1, T - 1); }
             }
         }
+        paintRoute(g, ox, oy, w, h);
         // objects; the hovered one is bigger, ringed and labelled like a link
         Place hov = hovered;
         Vector ps = pois;
@@ -598,7 +679,53 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             }
             label(g, hov.title, px, py - (hov.osm ? 13 : 23), w);
         }
-        cursor(g, mx < 0 ? w / 2 : mx, my < 0 ? h / 2 : my);
+        paintGps(g, ox, oy);
+        if (!follow) cursor(g, mx < 0 ? w / 2 : mx, my < 0 ? h / 2 : my);
+    }
+
+    void paintRoute(Graphics g, int ox, int oy, int w, int h) {
+        Route r = route;
+        if (r == null || r.lon.length < 2) return;
+        int px = (int) (Geo.lonToX(r.lon[0], zoom) - ox), py = (int) (Geo.latToY(r.lat[0], zoom) - oy);
+        for (int i = 1; i < r.lon.length; i++) {
+            int qx = (int) (Geo.lonToX(r.lon[i], zoom) - ox), qy = (int) (Geo.latToY(r.lat[i], zoom) - oy);
+            boolean visible = !((px < -10 && qx < -10) || (px > w + 10 && qx > w + 10) || (py < -10 && qy < -10) || (py > h + 10 && qy > h + 10));
+            if (visible) {
+                boolean done = navigating && r.along[i] < routeAt;
+                g.setColor(0xFFFFFF);
+                g.drawLine(px - 2, py, qx - 2, qy); g.drawLine(px + 2, py, qx + 2, qy);
+                g.drawLine(px, py - 2, qx, qy - 2); g.drawLine(px, py + 2, qx, qy + 2);
+                g.setColor(done ? 0x9E9E9E : (r.car ? 0x1565C0 : 0x7B1FA2));
+                g.drawLine(px, py, qx, qy);
+                g.drawLine(px - 1, py, qx - 1, qy); g.drawLine(px + 1, py, qx + 1, qy);
+                g.drawLine(px, py - 1, qx, qy - 1); g.drawLine(px, py + 1, qx, qy + 1);
+            }
+            px = qx; py = qy;
+        }
+        // finish flag
+        int ex = (int) (Geo.lonToX(r.lon[r.lon.length - 1], zoom) - ox), ey = (int) (Geo.latToY(r.lat[r.lat.length - 1], zoom) - oy);
+        g.setColor(0x000000);
+        g.drawLine(ex, ey, ex, ey - 16);
+        g.setColor(0x2E7D32);
+        g.fillTriangle(ex + 1, ey - 16, ex + 11, ey - 12, ex + 1, ey - 8);
+    }
+
+    void paintGps(Graphics g, int ox, int oy) {
+        Gps gp = Gps.instance;
+        if (!gp.hasFix()) return;
+        int x = (int) (Geo.lonToX(gp.lon, zoom) - ox), y = (int) (Geo.latToY(gp.lat, zoom) - oy);
+        if (gp.speedKmh > 2) {          // heading wedge
+            double a = Math.toRadians(gp.course);
+            int tx = x + (int) (Math.sin(a) * 16), ty = y - (int) (Math.cos(a) * 16);
+            int lx = x + (int) (Math.sin(a - 2.6) * 7), ly = y - (int) (Math.cos(a - 2.6) * 7);
+            int rx = x + (int) (Math.sin(a + 2.6) * 7), ry = y - (int) (Math.cos(a + 2.6) * 7);
+            g.setColor(0x1565C0);
+            g.fillTriangle(tx, ty, lx, ly, rx, ry);
+        }
+        g.setColor(0xFFFFFF);
+        g.fillArc(x - 8, y - 8, 16, 16, 0, 360);
+        g.setColor(0x1E88E5);
+        g.fillArc(x - 6, y - 6, 12, 12, 0, 360);
     }
 
     static void dot(Graphics g, int x, int y, int r, int color) {
@@ -672,6 +799,33 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             y = wrap(g, f, status, 3, y, tw, 3);
         }
         y += 3;
+        Route rt = route;
+        if (rt != null) {
+            Gps gp = Gps.instance;
+            if (navigating && gp.hasFix()) {
+                Route.Step st = rt.nextStep(routeAt);
+                if (st != null) {
+                    double to = rt.along[st.index] - routeAt;
+                    g.setFont(b);
+                    g.setColor(0xFFFFFF);
+                    y = wrap(g, b, (to > 15 ? "Za " + Route.km(to) + ": " : "") + st.text, 3, y, tw, 3);
+                    g.setFont(f);
+                }
+                double rest = rt.distance - routeAt;
+                g.setColor(0xB5BAC1);
+                y = wrap(g, f, rest < 25 ? "Jste v cíli" : "Zbývá " + Route.km(rest) + ", " + Route.time(rt.duration * rest / Math.max(1, rt.distance)), 3, y, tw, 2);
+                if (offRoute > (rt.car ? 50 : 30)) { g.setColor(0xEE6C6C); y = wrap(g, f, "Mimo trasu (" + (int) offRoute + " m)", 3, y, tw, 1); }
+            } else {
+                g.setColor(0xFFFFFF);
+                y = wrap(g, f, (rt.car ? "Autem " : "Pěšky ") + Route.km(rt.distance) + ", " + Route.time(rt.duration), 3, y, tw, 2);
+                g.setColor(0x80848E);
+                y = wrap(g, f, navigating ? "Čekám na GPS: " + gp.status : "Menu: Navigace start", 3, y, tw, 2);
+            }
+            y += 3;
+        } else if (Gps.instance.running && !Gps.instance.hasFix()) {
+            g.setColor(0x80848E);
+            y = wrap(g, f, "GPS: " + Gps.instance.status, 3, y, tw, 2);
+        }
         Place hov = hovered;
         if (hov != null) {
             g.setFont(b);

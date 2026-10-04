@@ -10,9 +10,9 @@ set L=%SDK%\lib
 if not exist "%J%\javac.exe" (echo JDK not found in %J% & exit /b 1)
 if exist classes rmdir /s /q classes
 mkdir classes bin 2>nul
-"%J%\javac" -source 1.2 -target 1.2 -Xlint:-options -encoding UTF-8 -bootclasspath "%L%\cldcapi11.jar;%L%\midpapi20.jar" -d classes src\mapy\*.java || exit /b 1
+"%J%\javac" -source 1.2 -target 1.2 -Xlint:-options -encoding UTF-8 -bootclasspath "%L%\cldcapi11.jar;%L%\midpapi20.jar;%L%\jsr82.jar" -d classes src\mapy\*.java || exit /b 1
 "%J%\jar" cfm bin\in.jar manifest.mf -C classes . -C res . || exit /b 1
-"%J%\java" -jar "%SDK%\proguard.jar" -injars bin\in.jar -outjars bin\out.jar -libraryjars "%L%\midpapi20.jar" -libraryjars "%L%\cldcapi11.jar" -microedition -target 1.2 -dontoptimize -dontobfuscate -dontnote -keep "public class mapy.Mapy" || exit /b 1
+"%J%\java" -jar "%SDK%\proguard.jar" -injars bin\in.jar -outjars bin\out.jar -libraryjars "%L%\midpapi20.jar" -libraryjars "%L%\cldcapi11.jar" -libraryjars "%L%\jsr82.jar" -microedition -target 1.2 -dontoptimize -dontobfuscate -dontnote -keep "public class mapy.Mapy" || exit /b 1
 del bin\in.jar
 move /y bin\out.jar bin\mapy9300.jar >nul
 for %%F in (bin\mapy9300.jar) do set SIZE=%%~zF
