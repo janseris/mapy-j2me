@@ -283,11 +283,22 @@ public class Mapy extends MIDlet implements CommandListener {
     }
 
     TextField fPc, fUa;
+    ChoiceGroup fPanel;
+    static final int[] PANEL_WIDTHS = { 110, 130, 150, 180, 210, 240 };
 
     void settings() {
         Form f = new Form("Nastavení");
         fPc = new TextField("PC pro log (adresa:port)", Settings.pc, 64, TextField.ANY);
         fUa = new TextField("User-Agent", Settings.userAgent, 200, TextField.ANY);
+        String[] labels = new String[PANEL_WIDTHS.length];
+        int sel = 2;
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = PANEL_WIDTHS[i] + " px";
+            if (PANEL_WIDTHS[i] == Settings.panelWidth) sel = i;
+        }
+        fPanel = new ChoiceGroup("Šířka levého panelu", Choice.POPUP, labels, null);
+        fPanel.setSelectedIndex(sel, true);
+        f.append(fPanel);
         f.append(fPc);
         f.append(fUa);
         f.append(new StringItem(null, "Mapa a body zájmu: © OpenStreetMap contributors (openstreetmap.org/copyright). Hledání a detaily: Mapy.com."));
@@ -317,7 +328,9 @@ public class Mapy extends MIDlet implements CommandListener {
             Settings.pc = fPc.getString().trim();
             String ua = fUa.getString().trim();
             Settings.userAgent = ua.length() > 0 ? ua : Settings.DEFAULT_UA;
+            Settings.panelWidth = PANEL_WIDTHS[fPanel.getSelectedIndex()];
             Settings.save();
+            map.repaint();
             showMap();
         } else if (c == SEND) {
             sendLog();

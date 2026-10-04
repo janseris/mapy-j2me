@@ -19,7 +19,7 @@ import javax.microedition.lcdui.*;
  * starved the TLS patch on the 9300).
  */
 public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.Listener {
-    static final int T = Geo.TILE, CACHE_MAX = 24, POI_ZOOM = 16, PANEL = 116, EDGE = 12, HOVER_R = 12;
+    static final int T = Geo.TILE, CACHE_MAX = 24, POI_ZOOM = 16, BAR = 26, EDGE = 12, HOVER_R = 12;
 
     // the first four go on the 9300's side buttons, top to bottom
     static final Command SEARCH = new Command("Hledat", Command.SCREEN, 1);
@@ -70,8 +70,9 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     // ---------------------------------------------------------------- geometry
 
-    /** Map area: x from PANEL to the right edge, full height. */
-    int mw() { return Math.max(1, getWidth() - PANEL); }
+    /** Left panel width (configurable), the map, then the icon bar for the side buttons. */
+    int panel() { return Settings.panelWidth; }
+    int mw() { return Math.max(1, getWidth() - panel() - BAR); }
     int mh() { return getHeight(); }
 
     void center(double lat, double lon) {
@@ -273,9 +274,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     int mx = -1, my = -1;                     // cursor, map-area pixels
     volatile boolean kLeft, kRight, kUp, kDown;
-    volatile long lastKeyEvent;
     Thread mover;
-    int speed;
 
     void initCursor() {
         if (mx < 0) { mx = mw() / 2; my = mh() / 2; }
@@ -296,15 +295,13 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             Log.add("key " + key + " '" + name + "' game action " + a);
         }
         boolean dir = a == LEFT || a == RIGHT || a == UP || a == DOWN;
-        if (dir && !isZoomKey(key)) {
+        if (dir) {
             if (a == LEFT) kLeft = down;
             if (a == RIGHT) kRight = down;
             if (a == UP) kUp = down;
             if (a == DOWN) kDown = down;
-            lastKeyEvent = System.currentTimeMillis();
             if (down && !repeat) {
-                speed = 3;
-                step();                       // react at once, don't wait for the key repeat
+                moveCursor((a == RIGHT ? 3 : a == LEFT ? -3 : 0), (a == DOWN ? 3 : a == UP ? -3 : 0));   // react at once
                 startMover();
             }
             return;
@@ -323,20 +320,34 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         repaintPanel();                                  // show the unknown key code
     }
 
-    /** Key codes that some phones send for Chr+Up / Chr+Down (zoom); filled in from the log. */
-    static boolean isZoomKey(int key) {
-        return false;
-    }
+    // cursor speed in pixels per second: starts slow for precise pointing, accelerates while held
+    static final double V0 = 70, VMAX = 420, ACCEL = 700;
 
     void startMover() {
         if (mover != null && mover.isAlive()) return;
         mover = new Thread() {
             public void run() {
-                // moves while a direction is held; stops if the phone never sends the release
-                while ((kLeft || kRight || kUp || kDown) && System.currentTimeMillis() - lastKeyEvent < 1500) {
-                    try { Thread.sleep(40); } catch (InterruptedException e) {}
-                    if (speed < 18) speed++;
-                    step();
+                double v = V0, fx = 0, fy = 0;
+                long last = System.currentTimeMillis(), started = last;
+                // moves while a direction is held (keyReleased stops it); time-based, so uneven
+                // timer ticks (62 ms resolution on the 9300) don't make it jerky
+                while ((kLeft || kRight || kUp || kDown) && System.currentTimeMillis() - started < 30000) {
+                    try { Thread.sleep(25); } catch (InterruptedException e) {}
+                    long now = System.currentTimeMillis();
+                    double dt = (now - last) / 1000.0;
+                    last = now;
+                    if (dt <= 0) continue;
+                    v = Math.min(VMAX, v + ACCEL * dt);
+                    int hx = (kRight ? 1 : 0) - (kLeft ? 1 : 0), hy = (kDown ? 1 : 0) - (kUp ? 1 : 0);
+                    double d = v * dt * (hx != 0 && hy != 0 ? 0.7071 : 1.0);
+                    fx += hx * d;
+                    fy += hy * d;
+                    int ix = (int) fx, iy = (int) fy;
+                    if (ix != 0 || iy != 0) {
+                        fx -= ix;
+                        fy -= iy;
+                        moveCursor(ix, iy);
+                    }
                 }
                 kLeft = kRight = kUp = kDown = false;
             }
@@ -344,15 +355,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         mover.start();
     }
 
-    /** One movement step in all held directions (diagonal when two are held). */
-    synchronized void step() {
-        int dx = (kRight ? speed : 0) - (kLeft ? speed : 0);
-        int dy = (kDown ? speed : 0) - (kUp ? speed : 0);
-        if (dx != 0 || dy != 0) moveCursor(dx, dy);
-    }
-
     /** Moves the cursor; past the edge the map scrolls instead. */
-    void moveCursor(int dx, int dy) {
+    synchronized void moveCursor(int dx, int dy) {
         int w = mw(), h = mh();
         int ox = mx, oy = my;
         int nx = mx + dx, ny = my + dy;
@@ -378,7 +382,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     }
 
     void repaintCursor(int x, int y) {
-        repaint(PANEL + x - 2, y - 2, 16, 22);
+        repaint(panel() + x - 2, y - 2, 16, 22);
     }
 
     /** Click: open the hovered object, or "what's here" at the cursor. */
@@ -400,10 +404,11 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     }
 
     // a real pointer, when the device has one (KEmulator; the 9300's Java reports none)
-    protected void pointerMoved(int x, int y) { initCursor(); moveCursor(x - PANEL - mx, y - my); }
+    protected void pointerMoved(int x, int y) { initCursor(); moveCursor(x - panel() - mx, y - my); }
     protected void pointerDragged(int x, int y) { pointerMoved(x, y); }
     protected void pointerPressed(int x, int y) {
-        if (x < PANEL) return;
+        if (x >= getWidth() - BAR) { barAction(y * 4 / getHeight()); return; }
+        if (x < panel()) return;
         pointerMoved(x, y);
         click();
     }
@@ -466,22 +471,60 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     static Font small() { return Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL); }
     static Font bold() { return Font.getFont(Font.FACE_SYSTEM, Font.STYLE_BOLD, Font.SIZE_SMALL); }
 
-    void repaintPanel() { repaint(0, 0, PANEL, getHeight()); }
+    void repaintPanel() { repaint(0, 0, panel(), getHeight()); }
 
     void repaintTile(int x, int y) {
-        repaint(PANEL + x * T - ((int) cx - mw() / 2), y * T - ((int) cy - mh() / 2), T, T);
+        repaint(panel() + x * T - ((int) cx - mw() / 2), y * T - ((int) cy - mh() / 2), T, T);
     }
 
     protected void paint(Graphics g) {
         int cxp = g.getClipX(), cyp = g.getClipY(), cw = g.getClipWidth(), ch = g.getClipHeight();
-        if (cxp + cw > PANEL) {
-            g.translate(PANEL, 0);
+        int P = panel(), W = getWidth();
+        if (cxp + cw > P && cxp < W - BAR) {
+            g.translate(P, 0);
             g.clipRect(0, 0, mw(), mh());
             paintMap(g, mw(), mh());
-            g.translate(-PANEL, 0);
+            g.translate(-P, 0);
             g.setClip(cxp, cyp, cw, ch);
         }
-        if (cxp < PANEL) paintPanel(g, PANEL, getHeight());
+        if (cxp < P) paintPanel(g, P, getHeight());
+        if (cxp + cw > W - BAR) paintBar(g, W - BAR, getHeight());
+    }
+
+    /**
+     * Icon bar on the right, next to the 9300's four side buttons (top to bottom: search, zoom in,
+     * zoom out, open). In full screen the phone doesn't draw their labels, so we do.
+     */
+    void paintBar(Graphics g, int x0, int h) {
+        g.setColor(0x1E1F22);
+        g.fillRect(x0, 0, BAR, h);
+        g.setColor(0x4E5058);
+        g.drawLine(x0, 0, x0, h);
+        for (int i = 0; i < 4; i++) {
+            int cy0 = h * i / 4 + h / 8, cx0 = x0 + BAR / 2;
+            if (i > 0) { g.setColor(0x383A40); g.drawLine(x0 + 4, h * i / 4, x0 + BAR - 4, h * i / 4); }
+            g.setColor(0xFFFFFF);
+            if (i == 0) {                       // magnifier
+                g.drawArc(cx0 - 7, cy0 - 7, 10, 10, 0, 360);
+                g.drawArc(cx0 - 6, cy0 - 6, 8, 8, 0, 360);
+                g.drawLine(cx0 + 1, cy0 + 1, cx0 + 6, cy0 + 6);
+                g.drawLine(cx0 + 2, cy0 + 1, cx0 + 6, cy0 + 5);
+                g.drawLine(cx0 + 1, cy0 + 2, cx0 + 5, cy0 + 6);
+            } else if (i == 1 || i == 2) {      // zoom in / out
+                g.drawArc(cx0 - 8, cy0 - 8, 16, 16, 0, 360);
+                g.fillRect(cx0 - 4, cy0 - 1, 9, 3);
+                if (i == 1) g.fillRect(cx0 - 1, cy0 - 4, 3, 9);
+            } else {                            // open: pointer clicking
+                cursor(g, cx0 - 4, cy0 - 8);
+            }
+        }
+    }
+
+    void barAction(int i) {
+        if (i == 0) app.search("");
+        else if (i == 1) setZoom(zoom + 1);
+        else if (i == 2) setZoom(zoom - 1);
+        else click();
     }
 
     void paintMap(Graphics g, int w, int h) {
@@ -589,10 +632,10 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         String prog = Net.progressText();
         if (prog.length() > 0) {
             g.setColor(0xFCEE74);
-            y = wrap(g, f, prog, 3, y, tw, 3);
+            y = wrap(g, f, prog, 3, y, tw, 4);
         } else if (status.length() > 0) {
             g.setColor(0xFCEE74);
-            y = wrap(g, f, status, 3, y, tw, 2);
+            y = wrap(g, f, status, 3, y, tw, 3);
         }
         y += 3;
         Place hov = hovered;

@@ -3,7 +3,7 @@
 A map app for the **Nokia 9300 / 9500 Communicator** (Series 80 v2, Symbian 7.0s, J2ME MIDP 2.0),
 inspired by the Mapy.com Android app.
 
-**Demo 0.3:**
+**Demo 0.4:**
 
 - **Map:** OpenStreetMap tiles (`tile.openstreetmap.org`), panning and zoom, up to 24 tiles in memory.
 - **Points of interest overlay:** named shops, restaurants, hotels, museums... from OpenStreetMap
@@ -19,9 +19,11 @@ Routes and Bluetooth GPS (position from an Android phone) come next.
 ## Controls
 
 Full screen: an info panel on the left (progress, status, the object under the cursor, zoom,
-credits), the map on the right. The map has a Windows-XP-style mouse cursor. The 9300's Java has no
-pointer events, so the navigation key drives it: it moves smoothly while held, diagonally when two
-directions are held, and at the edge of the map the map scrolls.
+credits; width set in Nastavení), the map, and a thin icon bar on the right that labels the four
+side buttons (in full screen the phone doesn't draw their labels). The map has a Windows-XP-style mouse cursor. The 9300's Java has no
+pointer events, so the navigation key drives it: it moves while held (time-based speed that
+accelerates, so the 9300's coarse timer doesn't make it jerky), diagonally when two directions are
+held, and at the edge of the map the map scrolls.
 
 | Key | Action |
 |---|---|
@@ -34,8 +36,9 @@ directions are held, and at the edge of the map the map scrolls.
 | letters | start a search with that letter |
 
 Objects under the cursor are highlighted like a link (blue ring, underlined label, name in the
-panel). The panel shows the code of the last key pressed, and every key is logged: Chr + Up/Down
-(the blue + / -) don't reach Java as zoom keys yet; their codes will be mapped once known.
+panel). The panel shows the code of the last key pressed, and every key is logged. Chr + Up/Down can't
+zoom: the 9300 doesn't tell Java about the Chr key (Chr alone sends nothing, Chr+Up arrives as a plain
+Up, -1), so zoom is on the side buttons and `+` / `-`.
 
 ## How it talks to the network (Nokia 9300 rules)
 
@@ -45,7 +48,7 @@ panel). The panel shows the code of the last key pressed, and every key is logge
   another thread) after 15 s without progress, 3 attempts, a short pause after each request so the
   phone keeps answering the PC's USB keep-alive. Progress is shown in the bottom strip, and only that
   strip (or the arriving tile) is repainted while loading.
-- Our own `User-Agent` (`Mapy9300/0.3 (+https://github.com/janseris/mapy-j2me)`), as OSM's tile and
+- Our own `User-Agent` (`Mapy9300/0.4 (+https://github.com/janseris/mapy-j2me)`), as OSM's tile and
   Overpass policies require; tiles only for the visible area, no prefetching.
 - Mapy.com calls: the FastRPC requests captured from the Android app (encoder verified byte for byte
   against the capture), without key or login.
