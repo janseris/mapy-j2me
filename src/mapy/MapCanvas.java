@@ -270,6 +270,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     public void commandAction(Command c, Displayable d) {
         lastCommand = System.currentTimeMillis();
+        Log.add("menu: " + c.getLabel());
         enterDown = false;              // the Enter that picked this menu item is not a map click
         if (c == SEARCH) app.search("");
         else if (c == OPEN) click();
@@ -445,7 +446,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             String name = "";
             try { name = getKeyName(key); } catch (Throwable e) {}
             lastKey = "klávesa " + key + (name != null && name.length() > 0 ? " " + name : "") + (a != 0 ? " (akce " + a + ")" : "");
-            Log.add("key " + key + " '" + name + "' game action " + a);
+            // arrows are too many to log (the menu is navigated with them too)
+            if (a != LEFT && a != RIGHT && a != UP && a != DOWN) Log.add("key " + key + " '" + name + "' game action " + a);
         }
         boolean dir = a == LEFT || a == RIGHT || a == UP || a == DOWN;
         if (dir) {
@@ -568,6 +570,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (!isShown()) return;
         initCursor();
         Place p = objectAt(mx, my, HOVER_R);
+        Log.add("click: " + (p != null ? p.title : "co je tady"));
         if (p != null) {
             selected = p;
             repaint();

@@ -32,6 +32,7 @@ public class Mapy extends MIDlet implements CommandListener {
     protected void startApp() {
         if (display != null) return;
         display = Display.getDisplay(this);
+        Log.start();
         Settings.load();
         Log.add("start: " + System.getProperty("microedition.platform") + ", view " + Geo.format(Settings.lat, Settings.lon) + " z" + Settings.zoom);
         map = new MapCanvas(this);
@@ -41,11 +42,15 @@ public class Mapy extends MIDlet implements CommandListener {
     protected void pauseApp() {}
 
     protected void destroyApp(boolean u) {
+        Log.add("exit");
+        Log.save();
         Settings.save();
         DiskCache.saveIndex();
     }
 
     void exit() {
+        Log.add("exit");
+        Log.save();
         Settings.save();
         DiskCache.saveIndex();
         notifyDestroyed();
@@ -417,7 +422,7 @@ public class Mapy extends MIDlet implements CommandListener {
         new Task() {
             String name() { return "Odeslání logu"; }
             void work() throws Exception {
-                byte[] b = Frpc.utf8Encode(Log.text());
+                byte[] b = Frpc.utf8Encode(Log.all());
                 // through Net like everything else: one connection at a time
                 Net.Response r = Net.post("http://" + Settings.pc + "/results?name=mapy", "text/plain; charset=utf-8", b, "log na PC");
                 Alert a = new Alert("Log", "Odesláno: HTTP " + r.code + ", " + b.length + " B", null, AlertType.INFO);

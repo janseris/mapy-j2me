@@ -150,7 +150,7 @@ public class Gps implements Runnable, DiscoveryListener {
         rpos = rlen = zeroAvail = 0;
         availBroken = false;
         StringBuffer line = new StringBuffer();
-        long lastUi = 0, started = System.currentTimeMillis(), lastDiag = started;
+        long lastUi = 0, lastTrack = 0, started = System.currentTimeMillis(), lastDiag = started;
         bytes = lines = badLines = 0;
         lastLine = "";
         int ch, eofs = 0;
@@ -186,6 +186,10 @@ public class Gps implements Runnable, DiscoveryListener {
                     if (!fix) { fix = true; status = "poloha OK"; Log.add("gps first fix after " + bytes + " B, " + lines + " lines"); }
                     long now = System.currentTimeMillis();
                     if (now - lastUi > 500) { lastUi = now; notifyListener(); }
+                    if (now - lastTrack > 30000) {      // a track point in the log every 30 s
+                        lastTrack = now;
+                        Log.add("gps " + Geo.format(lat, lon) + " " + (int) speedKmh + " km/h " + (int) course + "° sats " + Nmea.sats + " hdop " + Nmea.hdop + ", " + lines + " lines, " + bytes / 1024 + " KB");
+                    }
                 }
                 line.setLength(0);
             } else if (line.length() < 200) {
