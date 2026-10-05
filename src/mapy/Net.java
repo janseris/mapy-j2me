@@ -53,6 +53,19 @@ public class Net {
      */
     static final java.util.Hashtable hostMode = new java.util.Hashtable();   // host -> "http" / "https"
 
+    /** The start of a small text response (error pages), for the log. */
+    public static String text(Response r) {
+        if (r.body == null || r.body.length == 0 || r.type.indexOf("image") >= 0) return "";
+        String t = Frpc.utf8Decode(r.body, 0, Math.min(r.body.length, 400));
+        StringBuffer b = new StringBuffer();
+        boolean tag = false;
+        for (int i = 0; i < t.length(); i++) {          // without the HTML tags
+            char c = t.charAt(i);
+            if (c == '<') tag = true; else if (c == '>') { tag = false; b.append(' '); } else if (!tag && c >= ' ') b.append(c);
+        }
+        return b.toString().trim();
+    }
+
     static String host(String url) {
         int s = url.indexOf("://") + 3, e = url.indexOf('/', s);
         return e < 0 ? url.substring(s) : url.substring(s, e);
@@ -68,12 +81,15 @@ public class Net {
                 String plain = "http://" + url.substring(8);
                 try {
                     Response r = request(plain, null, null, label + " (http)");
-                    if (r.code < 300 || r.code >= 400) {
+                    if (r.code >= 500) return r;            // server trouble, says nothing about http
+                    if (r.code < 300 || r.code == 404) {
                         if (m == null) Log.add("http works for " + h + " (HTTP " + r.code + ")");
                         hostMode.put(h, "http");
                         return r;
                     }
-                    Log.add(h + ": HTTP " + r.code + " on http://, using https");
+                    // a redirect, or an error that only plain HTTP gets (ags.cuzk.gov.cz answered the
+                    // phone's http:// requests with 400 while a PC's worked): HTTPS from now on
+                    Log.add(h + ": HTTP " + r.code + " on http://, using https. " + text(r));
                 } catch (IOException e) {
                     Log.add(h + ": http:// failed (" + e + "), using https");
                 }
