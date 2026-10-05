@@ -111,11 +111,14 @@ public class Gps implements Runnable, DiscoveryListener {
 
     void read(InputStream in) throws IOException {
         StringBuffer line = new StringBuffer();
-        int ch;
         long lastUi = 0;
-        while (running && (ch = in.read()) >= 0) {
-            if (ch == '\n' || ch == '\r') {
-                if (line.length() > 0) {
+        byte[] buf = new byte[512];
+        int n;
+        while (running && (n = in.read(buf)) > 0) {          // blocks, not single bytes: keeps up in real time
+            for (int k = 0; k < n; k++) {
+                int ch = buf[k] & 0xff;
+                if (ch == '\n' || ch == '\r') {
+                    if (line.length() == 0) continue;
                     if (Nmea.parse(line.toString())) {
                         lat = Nmea.lat;
                         lon = Nmea.lon;
@@ -123,14 +126,14 @@ public class Gps implements Runnable, DiscoveryListener {
                         course = Nmea.course;
                         lastFix = System.currentTimeMillis();
                         if (!fix) { fix = true; status = "poloha OK"; }
-                        long now = System.currentTimeMillis();
-                        if (now - lastUi > 500) { lastUi = now; notifyListener(); }
                     }
                     line.setLength(0);
+                } else if (line.length() < 200) {
+                    line.append((char) ch);
                 }
-            } else if (line.length() < 200) {
-                line.append((char) ch);
             }
+            long now = System.currentTimeMillis();
+            if (fix && now - lastUi > 500) { lastUi = now; notifyListener(); }
         }
         if (running) setStatus("spojení ukončeno");
     }
