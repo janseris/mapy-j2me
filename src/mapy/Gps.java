@@ -72,23 +72,38 @@ public class Gps implements Runnable, DiscoveryListener {
             Vector urls = new Vector();
             setStatus("hledám službu GPS na " + addr + "...");
             serviceUrl = null;
-            searchResp = 0;
-            try {
-                DiscoveryAgent agent = LocalDevice.getLocalDevice().getDiscoveryAgent();
-                synchronized (searchDone) {
-                    searching = true;
-                    agent.searchServices(null, new UUID[] { SPP }, new RemoteDevice(addr) {}, this);
-                    long end = System.currentTimeMillis() + 30000;
-                    while (searching && System.currentTimeMillis() < end) searchDone.wait(1000);
+            // The SPP service isn't always listed at once (right after a disconnect the Android app
+            // may need a moment to offer it again): search up to 4 times before giving up.
+            for (int attempt = 1; attempt <= 4 && serviceUrl == null && running; attempt++) {
+                searchResp = 0;
+                if (attempt > 1) {
+                    setStatus("služba GPS zatím nenalezena, zkouším znovu (" + attempt + "/4)...");
+                    try { Thread.sleep(3000); } catch (InterruptedException e) {}
                 }
-            } catch (Throwable e) {
-                Log.add("gps service search: " + e);
+                try {
+                    while (running) {                       // not while HTTP runs (see next())
+                        synchronized (Net.COMMS) { if (!Net.commsBusy()) { inCall = true; break; } }
+                        Thread.sleep(100);
+                    }
+                    DiscoveryAgent agent = LocalDevice.getLocalDevice().getDiscoveryAgent();
+                    synchronized (searchDone) {
+                        searching = true;
+                        agent.searchServices(null, new UUID[] { SPP }, new RemoteDevice(addr) {}, this);
+                        long end = System.currentTimeMillis() + 30000;
+                        while (searching && System.currentTimeMillis() < end) searchDone.wait(1000);
+                    }
+                } catch (Throwable e) {
+                    Log.add("gps service search: " + e);
+                } finally {
+                    inCall = false;
+                }
+                if (searchResp != SERVICE_SEARCH_NO_RECORDS) break;     // found, or the phone isn't reachable
             }
             if (serviceUrl != null) urls.addElement(serviceUrl);
             else if (searchResp == SERVICE_SEARCH_NO_RECORDS) {
-                // the phone is there but shares no GPS (after a crash GPS NMEA Tether stops sharing);
-                // trying channels blindly only connects to some other service that sends nothing
-                setStatus("Android nesdílí GPS: spusťte znovu sdílení v GPS NMEA Tether");
+                // the phone answers but offers no serial port service; trying channels blindly only
+                // connects to some other service that sends nothing (seen: channel 2)
+                setStatus("Android nenabízí sdílení GPS: zkontrolujte GPS NMEA Tether (zapnout znovu)");
                 running = false;
                 return;
             }
