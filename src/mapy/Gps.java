@@ -112,11 +112,11 @@ public class Gps implements Runnable, DiscoveryListener {
     void read(InputStream in) throws IOException {
         StringBuffer line = new StringBuffer();
         long lastUi = 0;
-        byte[] buf = new byte[512];
-        int n;
-        while (running && (n = in.read(buf)) > 0) {          // blocks, not single bytes: keeps up in real time
-            for (int k = 0; k < n; k++) {
-                int ch = buf[k] & 0xff;
+        int ch;
+        // single-byte read(): read(byte[]) on a Bluetooth stream crashed the 9300's Java comms thread
+        // (E32USER-CBase 40, seen with probe 1.7)
+        while (running && (ch = in.read()) >= 0) {
+            {
                 if (ch == '\n' || ch == '\r') {
                     if (line.length() == 0) continue;
                     if (Nmea.parse(line.toString())) {
