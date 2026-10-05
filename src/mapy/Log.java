@@ -4,12 +4,12 @@ import javax.microedition.rms.RecordStore;
 
 /**
  * App log (last ~24 KB), shown in the app and sent to the PC. Saved to the phone (RMS) every
- * 10 s and on exit, so a run that ended (closed app, crash, battery) is still sent next time:
+ * 2 s and on exit, so a run that ended (closed app, crash, battery) is still sent next time:
  * the sent log is the previous run followed by this one.
  */
 public class Log {
     private static final StringBuffer buf = new StringBuffer();
-    private static String previous = "";
+    private static String previous = "", previous2 = "";
     private static boolean dirty;
 
     public static synchronized void add(String s) {
@@ -26,8 +26,11 @@ public class Log {
 
     /** What goes to the PC: the previous run's log, then this run's. */
     public static synchronized String all() {
-        if (previous.length() == 0) return buf.toString();
-        return "==== previous run ====\n" + previous + "\n==== this run ====\n" + buf.toString();
+        StringBuffer b = new StringBuffer();
+        if (previous2.length() > 0) b.append("==== run before the previous one ====\n").append(previous2).append('\n');
+        if (previous.length() > 0) b.append("==== previous run ====\n").append(previous).append('\n');
+        if (b.length() == 0) return buf.toString();
+        return b.append("==== this run ====\n").append(buf.toString()).toString();
     }
 
     /** Called at start: moves the last run's saved log to "previous", then saves every 10 s. */
@@ -38,6 +41,16 @@ public class Log {
                 byte[] b = rs.getRecord(1);
                 if (b != null) previous = new String(b, "UTF-8");
             }
+            if (rs.getNumRecords() > 1) {
+                byte[] b = rs.getRecord(2);
+                if (b != null) previous2 = new String(b, "UTF-8");
+            }
+            // the previous run moves to record 2; record 1 is this run's
+            byte[] p = previous.getBytes("UTF-8");
+            if (rs.getNumRecords() < 2) {
+                if (rs.getNumRecords() == 0) rs.addRecord(new byte[0], 0, 0);
+                rs.addRecord(p, 0, p.length);
+            } else rs.setRecord(2, p, 0, p.length);
             rs.closeRecordStore();
         } catch (Throwable e) {
             previous = "(previous log unreadable: " + e + ")";
@@ -45,7 +58,7 @@ public class Log {
         new Thread() {
             public void run() {
                 while (true) {
-                    try { Thread.sleep(10000); } catch (InterruptedException e) {}
+                    try { Thread.sleep(2000); } catch (InterruptedException e) {}
                     if (dirty) save();
                 }
             }

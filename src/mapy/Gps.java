@@ -89,7 +89,10 @@ public class Gps implements Runnable, DiscoveryListener {
                 String url = (String) urls.elementAt(i);
                 setStatus("připojuji " + (i == 0 && serviceUrl != null ? "službu GPS" : "kanál " + url.substring(21, url.indexOf(';'))));
                 try {
-                    conn = (StreamConnection) Connector.open(url);
+                    while (Net.busy && running) Thread.sleep(100);     // not while HTTP runs (see next())
+                    inCall = true;
+                    try { conn = (StreamConnection) Connector.open(url); } finally { inCall = false; }
+                } catch (InterruptedException e) {
                 } catch (IOException e) {
                     Log.add("gps " + url + ": " + e);
                 }
@@ -120,14 +123,26 @@ public class Gps implements Runnable, DiscoveryListener {
     final byte[] rb = new byte[256];
     int rpos, rlen, zeroAvail;
     boolean availBroken;
+    /** True during a Bluetooth read; Net waits for it before starting a request. */
+    public static volatile boolean inCall;
 
     int next() throws IOException {
         while (running) {
             if (rpos < rlen) return rb[rpos++] & 0xff;
             if (availBroken) return src.read();
-            int av = src.available();
+            // KERN-EXEC 3 in jes-...-java-comms while tiles were downloading: Bluetooth and HTTP
+            // calls into the Java comms layer at the same moment. While a request runs, leave the
+            // data in the Bluetooth buffer (150 B/s) and read it in the pauses between requests.
+            if (Net.busy) { try { Thread.sleep(50); } catch (InterruptedException e) {} continue; }
+            int av, n = 0;
+            inCall = true;
+            try {
+                av = src.available();
+                if (av > 0) n = src.read(rb, 0, Math.min(av, rb.length));
+            } finally {
+                inCall = false;
+            }
             if (av > 0) {
-                int n = src.read(rb, 0, Math.min(av, rb.length));
                 if (n < 0) return -1;
                 rpos = 0;
                 rlen = n;

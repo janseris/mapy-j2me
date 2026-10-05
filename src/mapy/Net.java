@@ -106,6 +106,10 @@ public class Net {
     static Response request(String url, String contentType, byte[] body, String label) throws IOException {
         acquire();
         busy = true;
+        // a Bluetooth (GPS) call may be in progress: let it finish first (Gps.next)
+        for (int i = 0; i < 40 && Gps.inCall; i++) {
+            try { Thread.sleep(25); } catch (InterruptedException e) {}
+        }
         what = label;
         try {
             IOException last = null;
