@@ -72,6 +72,7 @@ public class Gps implements Runnable, DiscoveryListener {
             Vector urls = new Vector();
             setStatus("hledám službu GPS na " + addr + "...");
             serviceUrl = null;
+            searchResp = 0;
             try {
                 DiscoveryAgent agent = LocalDevice.getLocalDevice().getDiscoveryAgent();
                 synchronized (searchDone) {
@@ -84,13 +85,22 @@ public class Gps implements Runnable, DiscoveryListener {
                 Log.add("gps service search: " + e);
             }
             if (serviceUrl != null) urls.addElement(serviceUrl);
+            else if (searchResp == SERVICE_SEARCH_NO_RECORDS) {
+                // the phone is there but shares no GPS (after a crash GPS NMEA Tether stops sharing);
+                // trying channels blindly only connects to some other service that sends nothing
+                setStatus("Android nesdílí GPS: spusťte znovu sdílení v GPS NMEA Tether");
+                running = false;
+                return;
+            }
             for (int ch = 1; ch <= 10; ch++) urls.addElement("btspp://" + addr + ":" + ch + ";authenticate=false;encrypt=false;master=false");
             for (int i = 0; i < urls.size() && running && conn == null; i++) {
                 String url = (String) urls.elementAt(i);
                 setStatus("připojuji " + (i == 0 && serviceUrl != null ? "službu GPS" : "kanál " + url.substring(21, url.indexOf(';'))));
                 try {
-                    while (Net.busy && running) Thread.sleep(100);     // not while HTTP runs (see next())
-                    inCall = true;
+                    while (running) {                                   // not while HTTP runs (see next())
+                        synchronized (Net.COMMS) { if (!Net.commsBusy()) { inCall = true; break; } }
+                        Thread.sleep(100);
+                    }
                     try { conn = (StreamConnection) Connector.open(url); } finally { inCall = false; }
                 } catch (InterruptedException e) {
                 } catch (IOException e) {
@@ -125,6 +135,7 @@ public class Gps implements Runnable, DiscoveryListener {
     boolean availBroken;
     /** True during a Bluetooth read; Net waits for it before starting a request. */
     public static volatile boolean inCall;
+    int searchResp;
 
     int next() throws IOException {
         while (running) {
@@ -132,9 +143,13 @@ public class Gps implements Runnable, DiscoveryListener {
             // KERN-EXEC 3 in jes-...-java-comms while tiles were downloading: Bluetooth and HTTP
             // calls into the Java comms layer at the same moment. While a request runs, leave the
             // data in the Bluetooth buffer (150 B/s) and read it in the pauses between requests.
-            if (Net.busy) { try { Thread.sleep(50); } catch (InterruptedException e) {} continue; }
+            boolean free;
+            synchronized (Net.COMMS) {
+                free = !Net.commsBusy();
+                if (free) inCall = true;
+            }
+            if (!free) { try { Thread.sleep(50); } catch (InterruptedException e) {} continue; }
             int av, n = 0;
-            inCall = true;
             try {
                 av = src.available();
                 if (av > 0) n = src.read(rb, 0, Math.min(av, rb.length));
@@ -221,6 +236,7 @@ public class Gps implements Runnable, DiscoveryListener {
 
     public void serviceSearchCompleted(int t, int resp) {
         Log.add("gps service search done: " + resp + ", url " + serviceUrl);
+        searchResp = resp;
         synchronized (searchDone) { searching = false; searchDone.notifyAll(); }
     }
 

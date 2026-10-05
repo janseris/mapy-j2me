@@ -32,6 +32,18 @@ public class Net {
     public static volatile int bytes, attempt;
     public static volatile long lastActivity;
     public static volatile boolean busy;
+    /**
+     * Bluetooth (GPS) and HTTP must not be inside the Java comms layer at the same time (KERN-EXEC 3
+     * in jes-...-java-comms). COMMS guards the check; "alive" counts request threads still running,
+     * including abandoned (stalled) ones, which go on after the request has given up on them.
+     */
+    public static final Object COMMS = new Object();
+    public static int alive;
+
+    /** True while any HTTP work may be inside the comms layer. */
+    public static boolean commsBusy() {
+        return busy || alive > 0;
+    }
 
     private static final Object lock = new Object();
     private static boolean locked;
@@ -105,9 +117,9 @@ public class Net {
 
     static Response request(String url, String contentType, byte[] body, String label) throws IOException {
         acquire();
-        busy = true;
+        synchronized (COMMS) { busy = true; }    // atomically with Gps' check (no new Bluetooth call from now)
         // a Bluetooth (GPS) call may be in progress: let it finish first (Gps.next)
-        for (int i = 0; i < 40 && Gps.inCall; i++) {
+        for (int i = 0; i < 600 && Gps.inCall; i++) {          // a Bluetooth connect can take seconds
             try { Thread.sleep(25); } catch (InterruptedException e) {}
         }
         what = label;
@@ -184,6 +196,7 @@ public class Net {
         }
 
         public void run() {
+            synchronized (COMMS) { alive++; }
             long t0 = System.currentTimeMillis();
             HttpConnection c = null;
             InputStream in = null;
@@ -236,6 +249,7 @@ public class Net {
                 try { if (out != null) out.close(); } catch (Throwable e) {}
                 try { if (in != null) in.close(); } catch (Throwable e) {}
                 try { if (c != null) c.close(); } catch (Throwable e) {}
+                synchronized (COMMS) { alive--; }
                 done = true;
             }
         }
