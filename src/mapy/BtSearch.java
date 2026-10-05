@@ -47,9 +47,16 @@ public class BtSearch implements DiscoveryListener, CommandListener {
             Log.add("bt inquiry start, known " + devices.size());
         } catch (Throwable e) {
             Log.add("bt inquiry: " + e);
-            info.setText("Hledání selhalo: " + e.getMessage() + "\nJe zapnutý Bluetooth? Není 9300 připojená přes Bluetooth k PC?");
+            setInfo("Hledání selhalo: " + e.getMessage() + "\nJe zapnutý Bluetooth? Není 9300 připojená přes Bluetooth k PC?");
             if (devices.size() > 0) showList("Známá zařízení");
         }
+    }
+
+    /** Form items are changed on the UI thread only (Bluetooth callbacks come on their own thread). */
+    void setInfo(final String t) {
+        display.callSerially(new Runnable() {
+            public void run() { info.setText(t); }
+        });
     }
 
     void add(RemoteDevice[] d) {
@@ -62,14 +69,14 @@ public class BtSearch implements DiscoveryListener, CommandListener {
                 if (((RemoteDevice) devices.elementAt(i)).getBluetoothAddress().equals(d.getBluetoothAddress())) return;
             devices.addElement(d);
         }
-        info.setText("Hledám... nalezeno " + devices.size());
+        setInfo("Hledám... nalezeno " + devices.size());
     }
 
     public void inquiryCompleted(int type) {
         done = true;
         Log.add("bt inquiry done " + type + ", devices " + devices.size());
         if (devices.size() == 0) {
-            info.setText((type == INQUIRY_ERROR ? "Chyba hledání. " : "Nic nenalezeno. ")
+            setInfo((type == INQUIRY_ERROR ? "Chyba hledání. " : "Nic nenalezeno. ")
                 + "Když je 9300 připojená přes Bluetooth k PC (PC Suite), hledání nefunguje. Zkontroluj, že je Android viditelný a sdílení GPS běží.");
             return;
         }

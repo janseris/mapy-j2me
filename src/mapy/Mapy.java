@@ -308,14 +308,24 @@ public class Mapy extends MIDlet implements CommandListener {
             // the text first, then the photo on top when it arrives
             new Thread() {
                 public void run() {
+                    // The Form is changed only on the UI thread (callSerially), and only while it's
+                    // still on screen: inserting into it from this thread after the user had gone
+                    // back to the map crashed the app (KERN-EXEC 3 in Main, Mapy 3.3).
+                    Item it;
                     try {
                         Image im = Photos.load(header, 120, "foto detailu");
-                        ImageItem it = new ImageItem(null, im, Item.LAYOUT_CENTER | Item.LAYOUT_NEWLINE_AFTER, "foto");
-                        if (f.size() > 0) f.insert(0, it); else f.append(it);
+                        it = new ImageItem(null, im, Item.LAYOUT_CENTER | Item.LAYOUT_NEWLINE_AFTER, "foto");
                     } catch (Throwable e) {
                         Log.add("detail photo " + header + ": " + e);
-                        add(f, "Fotka", "nepodařilo se načíst (" + e + ")");
+                        it = new StringItem("Fotka", "nepodařilo se načíst (" + e + ")");
                     }
+                    final Item item = it;
+                    display.callSerially(new Runnable() {
+                        public void run() {
+                            if (display.getCurrent() != f) { Log.add("detail photo: form closed, dropped"); return; }
+                            if (item instanceof ImageItem && f.size() > 0) f.insert(0, item); else f.append(item);
+                        }
+                    });
                 }
             }.start();
         }
