@@ -12,7 +12,13 @@ import javax.microedition.io.*;
  * - live progress (phase, bytes) for the UI.
  */
 public class Net {
-    public static final int STALL_MS = 15000, ATTEMPTS = 3, PAUSE_MS = 250;
+    public static final int STALL_MS = 15000, ATTEMPTS = 3;
+    /**
+     * Pause after each request. pubtran used 250 ms for the PC's USB keep-alive; Probe 2.7 measured
+     * that with no pause the next request answered in 160-190 ms instead of ~400 ms. 50 ms keeps a
+     * short breath for the keep-alive.
+     */
+    public static final int PAUSE_MS = 50;
 
     public static class Response {
         public int code;

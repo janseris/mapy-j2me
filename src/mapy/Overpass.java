@@ -15,8 +15,8 @@ public class Overpass {
      */
     static final String[] SERVERS = {
         "https://overpass-api.de/api/interpreter?data=",
-        "https://overpass.private.coffee/api/interpreter?data=",
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter?data=",
+        // overpass.private.coffee (HTTP 404, HTTPS hangs) and maps.mail.ru (HTTP 301, HTTPS hangs)
+        // don't work from the 9300 (Probe 2.7 big test): only the main server here
     };
     static int good;
 
