@@ -606,8 +606,11 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             else openMenu();
             return;
         }
-        if (key > 32 && key < 0x10000 && !Character.isDigit((char) key)) {
-            app.search(String.valueOf((char) key));     // typing starts a search
+        Command sc = shortcut(key);
+        if (sc != null) {                               // letter shortcuts; search only with H (or the menu)
+            Log.add("shortcut " + (char) key + ": " + sc.getLabel());
+            internalCommand = true;
+            try { commandAction(sc, this); } finally { internalCommand = false; }
             return;
         }
         repaintPanel();                                  // show the unknown key code
@@ -718,15 +721,39 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         repaint();
     }
 
+    /** Keyboard shortcuts on the map (Czech initials), shown in the menu. */
+    static final Object[][] SHORTCUTS = {
+        { "H", SEARCH }, { "T", ROUTE }, { "P", MYPOS }, { "M", LAYER }, { "S", FOLLOW }, { "G", GPS },
+        { "V", NAV }, { "Z", CLEAR_ROUTE }, { "C", HERE }, { "B", POIS }, { "F", FULL }, { "R", RELOAD },
+        { "L", LOG }, { "K", SETTINGS }, { "O", OPEN },
+    };
+
+    static Command shortcut(int key) {
+        if (key < 'A' || key > 'z') return null;
+        char ch = Character.toUpperCase((char) key);
+        for (int i = 0; i < SHORTCUTS.length; i++) if (((String) SHORTCUTS[i][0]).charAt(0) == ch) return (Command) SHORTCUTS[i][1];
+        return null;
+    }
+
+    static String shortcutOf(Command c) {
+        for (int i = 0; i < SHORTCUTS.length; i++) if (SHORTCUTS[i][1] == c) return (String) SHORTCUTS[i][0];
+        return null;
+    }
+
     String menuLabel(Command c) {
-        if (c == FOLLOW) return "Sledovat polohu";
-        if (c == GPS) return "GPS přes Bluetooth";
-        if (c == NAV) return "Navigace";
-        if (c == POIS) return "Body zájmu";
-        if (c == FULL) return "Celá obrazovka";
-        if (c == MYPOS) return "Moje poloha  (5 / .)";
-        if (c == LAYER) return "Typ mapy  (9 / ,)";
-        return c.getLabel();
+        String l;
+        if (c == FOLLOW) l = "Sledovat polohu";
+        else if (c == GPS) l = "GPS přes Bluetooth";
+        else if (c == NAV) l = "Navigace";
+        else if (c == POIS) l = "Body zájmu";
+        else if (c == FULL) l = "Celá obrazovka";
+        else if (c == MYPOS) l = "Moje poloha";
+        else l = c.getLabel();
+        String k = shortcutOf(c);
+        if (c == ZOOM_IN) k = "+";
+        if (c == ZOOM_OUT) k = "-";
+        if (c == NEXT) k = "N";
+        return k == null ? l : l + "  (" + k + ")";
     }
 
     /** Menu item state: -1 = an action, 0 = off, 1 = on (drawn as a checkbox). */
@@ -1410,7 +1437,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             g.setColor(0x80848E);
             String help = Settings.pois && zoom < POI_ZOOM
                 ? "Body zájmu od přiblížení " + POI_ZOOM + ". Enter = co je tady."
-                : "Najeď kurzorem na bod, Enter = otevřít. N = další bod. 5 = moje poloha, 9 = typ mapy. Menu: Tab." + (Settings.akce ? " (nebo 4. boční tlačítko)" : "");
+                : "Enter = otevřít, H = hledat, T = trasa, P = moje poloha, M = typ mapy, N = další bod. Menu (Tab) ukazuje všechny klávesy." + (Settings.akce ? " (nebo 4. boční tlačítko)" : "");
             y = wrap(g, f, help, 3, y, tw, 4);
         }
         // bottom: last key (for finding Chr+arrow codes), zoom, credits
