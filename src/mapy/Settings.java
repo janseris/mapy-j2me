@@ -6,7 +6,7 @@ import javax.microedition.rms.*;
 /** Settings and the last map view, in RMS. */
 public class Settings {
     /** OSM's tile policy wants a User-Agent naming the app; we use our own everywhere. */
-    public static final String DEFAULT_UA = "Mapy9300/1.9 (+https://github.com/janseris/mapy-j2me)";
+    public static final String DEFAULT_UA = "Mapy9300/2.0 (+https://github.com/janseris/mapy-j2me)";
 
     public static String pc = "192.168.137.1:8000";
     public static String userAgent = DEFAULT_UA;
@@ -25,6 +25,8 @@ public class Settings {
     /** Last GPS position received (kept across runs): shown greyed until a new one comes. */
     public static double gpsLat, gpsLon;
     public static long gpsTime;
+    /** Key codes of the four side buttons, top to bottom (learned once; 0 = unknown). */
+    public static int[] sideKeys = new int[4];
     public static boolean pois = true;
     public static double lat = 50.0875, lon = 14.4213;   // Praha
     public static int zoom = 15;
@@ -57,6 +59,7 @@ public class Settings {
                     gpsLat = in.readDouble();
                     gpsLon = in.readDouble();
                     gpsTime = in.readLong();
+                    for (int i = 0; i < 4; i++) sideKeys[i] = in.readInt();
                 } catch (EOFException e) {}
             }
             rs.closeRecordStore();
@@ -87,6 +90,7 @@ public class Settings {
             o.writeDouble(gpsLat);
             o.writeDouble(gpsLon);
             o.writeLong(gpsTime);
+            for (int i = 0; i < 4; i++) o.writeInt(sideKeys[i]);
             byte[] b = bo.toByteArray();
             RecordStore rs = RecordStore.openRecordStore("mapy", true);
             if (rs.getNumRecords() == 0) rs.addRecord(b, 0, b.length);

@@ -336,6 +336,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             viewChanged();
         }
         else if (c == LOG) app.showLog();
+        else if (c == SIDE_KEYS) startCalibration();
         else if (c == SETTINGS) app.settings();
         else if (c == EXIT) app.exit();
     }
@@ -489,6 +490,9 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         initCursor();
         int a = 0;
         try { a = getGameAction(key); } catch (Throwable e) {}
+        if (calibrating >= 0) { if (down && !repeat) calibrateKey(key); return; }
+        int side = sideButton(key);
+        if (side >= 0) { if (down && !repeat) { Log.add("side button " + (side + 1)); barAction(side); } return; }
         if (menuOpen) { menuKey(key, a, down); return; }
         if (down && !repeat) {
             String name = "";
@@ -553,9 +557,11 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             return;
         }
         if (key < 0 || key == 0) {
-            // a key Java has no meaning for (side button, Menu...): our menu
-            Log.add("unknown key " + key + ": opens the map menu");
-            openMenu();
+            // a key Java has no meaning for: before the side buttons are known, learn them;
+            // afterwards (Menu key...) it opens our menu
+            Log.add("unknown key " + key);
+            if (Settings.sideKeys[0] == 0 && !sideAsked) { sideAsked = true; startCalibration(); }
+            else openMenu();
             return;
         }
         if (key > 32 && key < 0x10000 && !Character.isDigit((char) key)) {
@@ -565,9 +571,75 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         repaintPanel();                                  // show the unknown key code
     }
 
+    // ---------------------------------------------------------------- side buttons
+
+    /**
+     * Without commands the 9300 sends the four side buttons to the canvas as key codes, which
+     * MIDP doesn't name. We learn them once: "press the top side button", ... the bottom one.
+     */
+    int calibrating = -1;
+    int[] learned = new int[4];
+    boolean sideAsked;
+    String calibMsg = "";
+
+    void startCalibration() {
+        menuOpen = false;
+        kLeft = kRight = kUp = kDown = false;
+        calibrating = 0;
+        calibMsg = "";
+        repaint();
+    }
+
+    void calibrateKey(int key) {
+        if (key == 27) { calibrating = -1; status = "Boční tlačítka nenastavena (Menu: Nastavit boční tlačítka)"; repaint(); return; }
+        for (int i = 0; i < calibrating; i++) {
+            if (learned[i] == key) {
+                calibMsg = "Kód " + key + " už má " + (i + 1) + ". tlačítko. Stiskněte " + (calibrating + 1) + ". tlačítko (Esc = zrušit).";
+                repaint();
+                return;
+            }
+        }
+        learned[calibrating] = key;
+        Log.add("side button " + (calibrating + 1) + " = key " + key);
+        calibrating++;
+        calibMsg = "";
+        if (calibrating == 4) {
+            calibrating = -1;
+            for (int i = 0; i < 4; i++) Settings.sideKeys[i] = learned[i];
+            Settings.save();
+            status = "Boční tlačítka: Hledat, Přiblížit, Oddálit, Menu";
+        }
+        repaint();
+    }
+
+    int sideButton(int key) {
+        if (key == 0) return -1;
+        for (int i = 0; i < 4; i++) if (Settings.sideKeys[i] == key) return i;
+        return -1;
+    }
+
+    void paintCalibration(Graphics g, int w, int h) {
+        Font b = bold(), f = small();
+        int bw = Math.min(w - 10, 330), bh = 4 * f.getHeight() + b.getHeight() + 14, x0 = (w - bw) / 2, y0 = (h - bh) / 2;
+        g.setColor(0x2B2D31);
+        g.fillRect(x0, y0, bw, bh);
+        g.setColor(0x8AB4F8);
+        g.drawRect(x0, y0, bw - 1, bh - 1);
+        g.setFont(b);
+        g.setColor(0xFFFFFF);
+        String[] names = { "horní (Hledat)", "2. (Přiblížit)", "3. (Oddálit)", "dolní (Menu)" };
+        g.drawString("Stiskněte " + names[calibrating] + " boční tlačítko", x0 + 8, y0 + 6, Graphics.TOP | Graphics.LEFT);
+        g.setFont(f);
+        g.setColor(0xDBDEE1);
+        String t = calibMsg.length() > 0 ? calibMsg
+            : "Nastavení bočních tlačítek vpravo (" + (calibrating + 1) + " ze 4), shora dolů. Esc = zrušit.";
+        wrap(g, f, t, x0 + 8, y0 + 10 + b.getHeight(), bw - 16, 4);
+    }
+
     // ---------------------------------------------------------------- our menu
 
-    static final Command[] MENU_ITEMS = { OPEN, SEARCH, ROUTE, ZOOM_IN, ZOOM_OUT, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, EXIT };
+    static final Command SIDE_KEYS = new Command("Nastavit boční tlačítka", Command.SCREEN, 11);
+    static final Command[] MENU_ITEMS = { OPEN, SEARCH, ROUTE, ZOOM_IN, ZOOM_OUT, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, SIDE_KEYS, EXIT };
     volatile boolean menuOpen;
     boolean internalCommand;
     int menuSel, menuTop;
@@ -895,6 +967,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         for (int i = 0; i < 4; i++) {
             int cy0 = h * i / 4 + h / 8, cx0 = x0 + BAR / 2;
             if (i > 0) { g.setColor(0x383A40); g.drawLine(x0 + 4, h * i / 4, x0 + BAR - 4, h * i / 4); }
+            if (i == calibrating) { g.setColor(0x8A6D00); g.fillRect(x0 + 1, h * i / 4 + 1, BAR - 1, h / 4 - 1); }   // the one to press
             g.setColor(0xFFFFFF);
             if (i == 0) {                       // magnifier
                 g.drawArc(cx0 - 7, cy0 - 7, 10, 10, 0, 360);
@@ -915,6 +988,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     }
 
     void barAction(int i) {
+        if (i < 3 && menuOpen) closeMenu();
         if (i == 0) app.search("");
         else if (i == 1) setZoom(zoom + 1);
         else if (i == 2) setZoom(zoom - 1);
@@ -968,6 +1042,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         paintSpeed(g, w, h);
         paintWarning(g, w);
         if (menuOpen) paintMenu(g, w, h);
+        if (calibrating >= 0) paintCalibration(g, w, h);
     }
 
     void paintRoute(Graphics g, int ox, int oy, int w, int h) {
