@@ -117,7 +117,27 @@ public class Net {
         return request(url, contentType, body, label);
     }
 
+    /**
+     * The phone's Java adds its own second header "User-Agent: UNTRUSTED/1.0" after ours (MIDP's
+     * mark for unsigned MIDlets; seen with ota_server's raw echo). Most servers take it; ČÚZK's IIS
+     * answers 400 "Invalid Header". For such hosts we send no User-Agent of our own, so there's
+     * only the phone's. Learned on such a 400 too, then the request is repeated once.
+     */
+    static final java.util.Hashtable noUa = new java.util.Hashtable();
+    static { noUa.put("ags.cuzk.gov.cz", Boolean.TRUE); }
+
     static Response request(String url, String contentType, byte[] body, String label) throws IOException {
+        Response r = request0(url, contentType, body, label);
+        String h = host(url);
+        if (r.code == 400 && !noUa.containsKey(h) && text(r).indexOf("Invalid Header") >= 0) {
+            noUa.put(h, Boolean.TRUE);
+            Log.add(h + ": 400 Invalid Header, again without our User-Agent (the phone adds a second one)");
+            r = request0(url, contentType, body, label);
+        }
+        return r;
+    }
+
+    static Response request0(String url, String contentType, byte[] body, String label) throws IOException {
         acquire();
         synchronized (COMMS) { busy = true; }    // atomically with Gps' check (no new Bluetooth call from now)
         // a Bluetooth (GPS) call may be in progress: let it finish first (Gps.next)
@@ -206,7 +226,7 @@ public class Net {
             try {
                 phase("připojování", 0);
                 c = (HttpConnection) Connector.open(url);
-                c.setRequestProperty("User-Agent", Settings.userAgent);
+                if (!noUa.containsKey(host(url))) c.setRequestProperty("User-Agent", Settings.userAgent);
                 if (body != null) {
                     c.setRequestMethod(HttpConnection.POST);
                     c.setRequestProperty("Content-Type", contentType);
