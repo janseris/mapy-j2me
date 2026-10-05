@@ -182,6 +182,14 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     }
 
     String parentKey, tileInfo = "";
+    /** The last tile error and how many tiles failed in a row (shown in the panel until a tile works). */
+    volatile String tileError = "";
+    volatile int tileErrors;
+
+    void noteTileError() {
+        tileErrors++;
+        repaintPanel();
+    }
     Image parentImage;
 
     static String key(int z, int x, int y) { return Layers.current() + ":" + z + "/" + x + "/" + y; }
@@ -227,7 +235,12 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                     from = "net " + r.scheme;
                     code = r.code;
                     if (r.code == 200) DiskCache.put(url, r.body);
-                    else Log.add("tile " + pk + ": HTTP " + r.code + " " + Net.text(r));
+                    else {
+                        // any non-200 is an error: logged, shown on the tile and in the panel
+                        String why = Net.text(r);
+                        Log.add("tile " + pk + ": HTTP " + r.code + " " + why);
+                        tileError = "HTTP " + r.code + (why.length() > 0 ? " " + why : "");
+                    }
                     body = r.code == 200 ? r.body : null;
                     tileInfo += " " + from + " HTTP " + code + " " + r.body.length + " B " + r.type + " " + (System.currentTimeMillis() - t0) + " ms";
                 } else {
@@ -252,8 +265,10 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 if (d > 0) { parentKey = pk; parentImage = src; }
             }
             if (src == null) {
-                failed.put(k, Boolean.TRUE);
+                failed.put(k, tileError.length() > 0 ? tileError : "chyba");
+                noteTileError();
             } else {
+                if (tileErrors > 0) { tileErrors = 0; tileError = ""; }
                 Image im = src;
                 if (d > 0) {
                     int part = T >> d, ox = (tx - (px << d)) * part, oy = (by - (py << d)) * part;
@@ -278,8 +293,10 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             Log.add("tile " + k + ": out of memory, cache trimmed");
         } catch (Throwable e) {
             Log.add(tileInfo + ", ERROR " + e);
-            failed.put(k, Boolean.TRUE);
-            status = "Chyba mapy: " + e.getMessage();
+            String m = e.getMessage();
+            tileError = m != null ? m : e.toString();
+            failed.put(k, tileError);
+            noteTileError();
         }
         return true;
     }
@@ -372,6 +389,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         else if (c == CLEAR_ROUTE) { route = null; navigating = false; repaint(); }
         else if (c == RELOAD) {
             failed.clear();
+            tileErrors = 0; tileError = "";
             poiFailed = false;
             poiBox = null;
             viewChanged();
@@ -413,6 +431,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     void layerChanged() {
         synchronized (tiles) { tiles.clear(); tileOrder.removeAllElements(); }
         failed.clear();
+        tileErrors = 0; tileError = "";
         if (zoom > Layers.maxZoom()) zoom = Layers.maxZoom();
         status = "Mapa: " + Layers.NAMES[Layers.current()];
         viewChanged();
@@ -1123,7 +1142,18 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 int px = x * T - ox, py = y * T - oy;
                 Image im = (y >= 0 && y < max) ? (Image) tiles.get(key(zoom, x & (max - 1), y)) : null;
                 if (im != null) g.drawImage(im, px, py, Graphics.TOP | Graphics.LEFT);
-                else { g.setColor(0xCFCCC6); g.drawRect(px, py, T - 1, T - 1); }
+                else {
+                    g.setColor(0xCFCCC6);
+                    g.drawRect(px, py, T - 1, T - 1);
+                    Object why = (y >= 0 && y < max) ? failed.get(key(zoom, x & (max - 1), y)) : null;
+                    if (why != null) {                       // a failed tile says why
+                        g.setColor(0xF4D6D6);
+                        g.fillRect(px + 1, py + 1, T - 2, T - 2);
+                        g.setColor(0xB71C1C);
+                        g.setFont(small());
+                        wrap(g, small(), "Dlaždice se nenačetla: " + why, px + 6, py + 6, T - 12, 4);
+                    }
+                }
             }
         }
         paintRoute(g, ox, oy, w, h);
@@ -1392,6 +1422,10 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         gpsIcon(g, pw - 16, y, gpsState());
         y += b.getHeight() + 2;
         g.setFont(f);
+        if (tileErrors > 0) {
+            g.setColor(0xEE6C6C);
+            y = wrap(g, f, "Chyba mapy (" + tileErrors + "x): " + tileError, 3, y, tw, 3);
+        }
         String prog = Net.progressText();
         if (prog.length() > 0) {
             g.setColor(0xFCEE74);
