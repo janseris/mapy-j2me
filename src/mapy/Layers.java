@@ -1,0 +1,68 @@
+package mapy;
+
+/**
+ * Raster map types. All are 256 px Web Mercator tiles; each one's terms ask for light use, a
+ * User-Agent naming the app and the credit shown in the panel.
+ * - OpenStreetMap: the standard OSM map.
+ * - OpenTopoMap: topographic (contours, hill shading, paths), CC-BY-SA, max zoom 17.
+ * - ČÚZK ZTM: the Czech state topographic map (Základní topografická mapa), open data, CZ only.
+ * - ČÚZK ortofoto: the Czech state aerial photos, open data, CZ only.
+ * - Mapy.com outdoor / aerial: through the official Mapy.com API with the user's own API key
+ *   (free registration at developer.mapy.com); hidden without a key.
+ */
+public class Layers {
+    public static final String[] NAMES = {
+        "OpenStreetMap (základní)",
+        "OpenTopoMap (turistická, vrstevnice)",
+        "ČÚZK základní mapa ČR",
+        "ČÚZK letecká (ortofoto ČR)",
+        "Mapy.com turistická (API klíč)",
+        "Mapy.com letecká (API klíč)",
+    };
+    static final String[] URLS = {
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://tile.opentopomap.org/{z}/{x}/{y}.png",
+        "https://ags.cuzk.gov.cz/arcgis1/rest/services/ZTM_WM/MapServer/tile/{z}/{y}/{x}",
+        "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO_WM/MapServer/tile/{z}/{y}/{x}",
+        "https://api.mapy.com/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey={key}",
+        "https://api.mapy.com/v1/maptiles/aerial/256/{z}/{x}/{y}?apikey={key}",
+    };
+    static final String[] CREDITS = {
+        "© OpenStreetMap|contributors",
+        "© OpenTopoMap|© OpenStreetMap",
+        "© ČÚZK|",
+        "© ČÚZK|",
+        "© Seznam.cz|© OpenStreetMap",
+        "© Seznam.cz|© OpenStreetMap",
+    };
+    static final int[] MAX_ZOOM = { 18, 17, 18, 18, 18, 18 };
+
+    public static int current() {
+        int l = Settings.layer;
+        if (l < 0 || l >= URLS.length || (needsKey(l) && Settings.mapyKey.length() == 0)) return 0;
+        return l;
+    }
+
+    public static boolean needsKey(int l) { return URLS[l].indexOf("{key}") >= 0; }
+
+    public static String url(int z, int x, int y) {
+        String u = URLS[current()];
+        u = put(u, "{z}", "" + z);
+        u = put(u, "{x}", "" + x);
+        u = put(u, "{y}", "" + y);
+        return put(u, "{key}", Net.encode(Settings.mapyKey));
+    }
+
+    public static String credit(int line) {
+        String c = CREDITS[current()];
+        int i = c.indexOf('|');
+        return line == 0 ? c.substring(0, i) : c.substring(i + 1);
+    }
+
+    public static int maxZoom() { return MAX_ZOOM[current()]; }
+
+    static String put(String s, String a, String b) {
+        int i = s.indexOf(a);
+        return i < 0 ? s : s.substring(0, i) + b + s.substring(i + a.length());
+    }
+}

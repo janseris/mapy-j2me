@@ -132,7 +132,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     /** Zooms keeping the map point under the cursor where it is. */
     void setZoom(int z) {
-        if (z < 3 || z > 18 || z == zoom) return;
+        if (z < 3 || z > Layers.maxZoom() || z == zoom) return;
         initCursor();
         double lon = Geo.xToLon(wx(mx), zoom), lat = Geo.yToLat(wy(my), zoom);
         zoom = z;
@@ -181,7 +181,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         }
     }
 
-    static String key(int z, int x, int y) { return z + "/" + x + "/" + y; }
+    static String key(int z, int x, int y) { return Layers.current() + ":" + z + "/" + x + "/" + y; }
 
     /** Loads one missing visible tile, nearest to the centre first. False when none is missing. */
     boolean loadNextTile() {
@@ -207,7 +207,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         status = "Mapa: zbývá " + missing;
         repaintPanel();
         try {
-            String url = "https://tile.openstreetmap.org/" + z + "/" + tx + "/" + by + ".png";
+            String url = Layers.url(z, tx, by);
             byte[] body = DiskCache.get(url);         // phone storage first, then the network
             if (body == null) {
                 Net.Response r = Net.get(url, "dlaždice " + k);
@@ -337,6 +337,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         }
         else if (c == LOG) app.showLog();
         else if (c == SIDE_KEYS) startCalibration();
+        else if (c == LAYER) app.chooseLayer();
         else if (c == SETTINGS) app.settings();
         else if (c == EXIT) app.exit();
     }
@@ -350,6 +351,15 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         Command[] all = { SEARCH, ZOOM_IN, ZOOM_OUT, MENU };
         for (int i = 0; i < all.length; i++) removeCommand(all[i]);
         if (Settings.akce) for (int i = 0; i < all.length; i++) addCommand(all[i]);
+    }
+
+    /** Another map type: drop the tiles in memory (the disk cache keeps each type by its URL). */
+    void layerChanged() {
+        synchronized (tiles) { tiles.clear(); tileOrder.removeAllElements(); }
+        failed.clear();
+        if (zoom > Layers.maxZoom()) zoom = Layers.maxZoom();
+        status = "Mapa: " + Layers.NAMES[Layers.current()];
+        viewChanged();
     }
 
     void toggleFullScreen() {
@@ -638,8 +648,9 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     // ---------------------------------------------------------------- our menu
 
+    static final Command LAYER = new Command("Typ mapy", Command.SCREEN, 6);
     static final Command SIDE_KEYS = new Command("Nastavit boční tlačítka", Command.SCREEN, 11);
-    static final Command[] MENU_ITEMS = { OPEN, SEARCH, ROUTE, ZOOM_IN, ZOOM_OUT, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, SIDE_KEYS, EXIT };
+    static final Command[] MENU_ITEMS = { OPEN, SEARCH, ROUTE, ZOOM_IN, ZOOM_OUT, LAYER, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, SIDE_KEYS, EXIT };
     volatile boolean menuOpen;
     boolean internalCommand;
     int menuSel, menuTop;
@@ -1375,8 +1386,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (lastKey.length() > 0 && by - fh > y) g.drawString(clip(f, lastKey, tw), 3, by - fh, Graphics.TOP | Graphics.LEFT);
         g.setColor(0xB5BAC1);
         g.drawString("Zoom " + zoom, 3, by, Graphics.TOP | Graphics.LEFT);
-        g.drawString("© OpenStreetMap", 3, by + fh, Graphics.TOP | Graphics.LEFT);
-        g.drawString("contributors", 3, by + 2 * fh, Graphics.TOP | Graphics.LEFT);
+        g.drawString(Layers.credit(0), 3, by + fh, Graphics.TOP | Graphics.LEFT);
+        g.drawString(Layers.credit(1), 3, by + 2 * fh, Graphics.TOP | Graphics.LEFT);
     }
 
     static String clip(Font f, String s, int w) {

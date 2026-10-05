@@ -478,7 +478,21 @@ public class Mapy extends MIDlet implements CommandListener {
         }.go();
     }
 
-    TextField fPc, fUa, fBt;
+    TextField fPc, fUa, fBt, fKey;
+    List layerList;
+
+    /** Map type chooser (a native List: Up/Down move, Enter picks). */
+    void chooseLayer() {
+        layerList = new List("Typ mapy", List.IMPLICIT);
+        for (int i = 0; i < Layers.NAMES.length; i++) {
+            boolean noKey = Layers.needsKey(i) && Settings.mapyKey.length() == 0;
+            layerList.append((i == Layers.current() ? "* " : "") + Layers.NAMES[i] + (noKey ? " - klíč chybí" : ""), null);
+        }
+        layerList.setSelectedIndex(Layers.current(), true);
+        layerList.addCommand(BACK);
+        layerList.setCommandListener(this);
+        display.setCurrent(layerList);
+    }
     Form settingsForm;
     static final Command BT_SEARCH = new Command("Hledat GPS zařízení", Command.SCREEN, 2);
     static final Command DISCARD = new Command("Neukládat", Command.SCREEN, 2);
@@ -488,7 +502,7 @@ public class Mapy extends MIDlet implements CommandListener {
 
     /** The settings form's values as one string, to see whether anything changed. */
     String formState() {
-        return fPc.getString() + "|" + fUa.getString() + "|" + fBt.getString() + "|" + fPanel.getSelectedIndex() + fCache.getSelectedIndex()
+        return fPc.getString() + "|" + fUa.getString() + "|" + fKey.getString() + "|" + fBt.getString() + "|" + fPanel.getSelectedIndex() + fCache.getSelectedIndex()
             + fPreview.getSelectedIndex() + fFollow.getSelectedIndex() + fLimits.getSelectedIndex() + fAkce.getSelectedIndex();
     }
 
@@ -547,6 +561,8 @@ public class Mapy extends MIDlet implements CommandListener {
             new String[] { "vypnuto: menu mapy je Tab / 4. boční tlačítko", "zapnuto (šipky v něm hýbou mapou)" }, null);
         fAkce.setSelectedIndex(Settings.akce ? 1 : 0, true);
         f.append(fAkce);
+        fKey = new TextField("Mapy.com API klíč (vlastní, zdarma na developer.mapy.com; pro mapy Mapy.com)", Settings.mapyKey, 100, TextField.ANY);
+        f.append(fKey);
         f.append(fPc);
         f.append(fUa);
         f.append(new StringItem(null, "Mapa, body zájmu a trasy: © OpenStreetMap contributors (openstreetmap.org/copyright), trasy: OSRM na serveru FOSSGIS (routing.openstreetmap.de). Chyba v mapě? openstreetmap.org/fixthemap. Hledání, detaily, fotky a ikony: Mapy.com."));
@@ -561,6 +577,23 @@ public class Mapy extends MIDlet implements CommandListener {
     }
 
     public void commandAction(Command c, Displayable d) {
+        if (d == layerList) {
+            int i = layerList.getSelectedIndex();
+            if (c == List.SELECT_COMMAND && i >= 0) {
+                if (Layers.needsKey(i) && Settings.mapyKey.length() == 0) {
+                    Alert a = new Alert("Typ mapy", "Mapy Mapy.com potřebují vlastní API klíč: zaregistrujte se zdarma na developer.mapy.com a zadejte klíč v Nastavení.", null, AlertType.INFO);
+                    a.setTimeout(Alert.FOREVER);
+                    display.setCurrent(a, layerList);
+                    return;
+                }
+                Settings.layer = i;
+                Settings.save();
+                Log.add("map type " + Layers.NAMES[i]);
+                map.layerChanged();
+            }
+            showMap();
+            return;
+        }
         if (d == searchBox) {
             if (c == DO_SEARCH) runSearch(searchBox.getString());
             else showMap();
@@ -599,6 +632,8 @@ public class Mapy extends MIDlet implements CommandListener {
             Settings.btAddress = bt.length() == 12 ? bt : Settings.DEFAULT_BT;
             Settings.follow = fFollow.getSelectedIndex() == 0;
             Settings.speedLimits = fLimits.getSelectedIndex() == 0;
+            String key = fKey.getString().trim();
+            if (!key.equals(Settings.mapyKey)) { Settings.mapyKey = key; map.layerChanged(); }
             Settings.akce = fAkce.getSelectedIndex() == 1;
             map.applyCommands();
             map.follow = Settings.follow;
