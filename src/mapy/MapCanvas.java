@@ -27,6 +27,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     static final Command ZOOM_OUT = new Command("Oddálit", Command.SCREEN, 3);
     static final Command MENU = new Command("Menu", Command.SCREEN, 4);
     static final Command OPEN = new Command("Otevřít", Command.SCREEN, 4);
+    static final Command ROUTE = new Command("Trasa (odkud, kam)", Command.SCREEN, 5);
     static final Command MYPOS = new Command("Moje poloha (GPS)", Command.SCREEN, 5);
     static final Command FOLLOW = new Command("Sledovat polohu zap/vyp", Command.SCREEN, 5);
     static final Command GPS = new Command("GPS připojit/odpojit", Command.SCREEN, 5);
@@ -275,6 +276,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (c == MENU) { if (menuOpen) closeMenu(); else openMenu(); return; }
         if (menuOpen) closeMenu();
         if (c == SEARCH) app.search("");
+        else if (c == ROUTE) app.routeForm();
         else if (c == OPEN) click();
         else if (c == ZOOM_IN) setZoom(zoom + 1);
         else if (c == ZOOM_OUT) setZoom(zoom - 1);
@@ -501,7 +503,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     // ---------------------------------------------------------------- our menu
 
-    static final Command[] MENU_ITEMS = { OPEN, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, EXIT };
+    static final Command[] MENU_ITEMS = { OPEN, ROUTE, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, EXIT };
     volatile boolean menuOpen;
     int menuSel, menuTop;
 
@@ -831,6 +833,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         paintGps(g, ox, oy);
         if (!(follow && cursorHidden)) cursor(g, mx < 0 ? w / 2 : mx, my < 0 ? h / 2 : my);
         paintSpeed(g, w, h);
+        paintWarning(g, w);
         if (menuOpen) paintMenu(g, w, h);
     }
 
@@ -910,17 +913,60 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         g.fillRoundRect(x0, y0, bw, bh, 8, 8);
         g.setColor(0x1565C0);
         g.drawRoundRect(x0, y0, bw, bh, 8, 8);
+        int lim = SpeedLimit.instance.limit;
+        boolean over = lim > 0 && gp.speedKmh > lim + 0.5;
+        if (over) {                                             // over the limit: the box goes red
+            g.setColor(0xD32F2F);
+            g.fillRoundRect(x0 + 1, y0 + 1, bw - 1, bh - 1, 8, 8);
+        }
         g.setFont(big);
-        g.setColor(0x000000);
+        g.setColor(over ? 0xFFFFFF : 0x000000);
         g.drawString(sp, x0 + 5, y0 + 1, Graphics.TOP | Graphics.LEFT);
         g.setFont(f);
-        g.setColor(0x444444);
+        g.setColor(over ? 0xFFFFFF : 0x444444);
         g.drawString("km/h", x0 + 5, y0 + 1 + big.getHeight(), Graphics.TOP | Graphics.LEFT);
         compass(g, x0 + bw - 17, y0 + bh / 2, 14, gp.speedKmh > 2 ? gp.course : -1);
+        if (lim > 0) limitSign(g, x0 + bw + 4 + bh / 2, y0 + bh / 2, bh / 2, lim, over, SpeedLimit.instance.implied);
         if (follow) {
             g.setColor(0x1565C0);
             g.fillArc(x0 + bw - 6, y0 - 3, 8, 8, 0, 360);         // dot = following
         }
+    }
+
+    /** Radar / accident black spot ahead: a yellow banner on top of the map. */
+    void paintWarning(Graphics g, int w) {
+        String t = SpeedLimit.instance.warning;
+        if (t.length() == 0 || !Gps.instance.hasFix()) return;
+        Font b = bold();
+        int tw = b.stringWidth(t) + 30, bh = b.getHeight() + 6, x0 = (w - tw) / 2;
+        g.setColor(0xFFD600);
+        g.fillRect(x0, 2, tw, bh);
+        g.setColor(0x000000);
+        g.drawRect(x0, 2, tw - 1, bh - 1);
+        // warning triangle
+        g.setColor(0xD32F2F);
+        g.fillTriangle(x0 + 12, 5, x0 + 4, bh - 1, x0 + 20, bh - 1);
+        g.setColor(0xFFFFFF);
+        g.fillTriangle(x0 + 12, 9, x0 + 8, bh - 3, x0 + 16, bh - 3);
+        g.setColor(0x000000);
+        g.setFont(b);
+        g.drawString(t, x0 + 25, 5, Graphics.TOP | Graphics.LEFT);
+    }
+
+    /** Speed limit sign: white disc, red ring, black number; when over the limit, red with a white number. */
+    static void limitSign(Graphics g, int x, int y, int r, int lim, boolean over, boolean implied) {
+        g.setColor(0xD32F2F);
+        g.fillArc(x - r, y - r, 2 * r, 2 * r, 0, 360);
+        int ri = r * 7 / 10;
+        if (!over) {
+            g.setColor(0xFFFFFF);
+            g.fillArc(x - ri, y - ri, 2 * ri, 2 * ri, 0, 360);
+        }
+        Font f = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_BOLD, lim >= 100 ? Font.SIZE_SMALL : Font.SIZE_MEDIUM);
+        g.setFont(f);
+        g.setColor(over ? 0xFFFFFF : 0x000000);
+        String t = lim + (implied ? "?" : "");
+        g.drawString(t, x, y - f.getHeight() / 2, Graphics.TOP | Graphics.HCENTER);
     }
 
     /** Compass: a ring with N on top and the heading arrow; course < 0 = unknown (standing). */
@@ -1049,6 +1095,12 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             g.setColor(0xB5BAC1);
             g.drawString(gq.speedKmh > 2 ? direction(gq.course) : "stojím", 32, y + b.getHeight(), Graphics.TOP | Graphics.LEFT);
             y += Math.max(28, b.getHeight() + fh) + 1;
+            SpeedLimit sl = SpeedLimit.instance;
+            if (Settings.speedLimits && sl.limit > 0) {
+                boolean over = gq.speedKmh > sl.limit + 0.5;
+                g.setColor(over ? 0xEE6C6C : 0xB5BAC1);
+                y = wrap(g, f, "Limit " + sl.limit + (sl.implied ? " (odhad)" : "") + (over ? " - PŘEKROČENO" : "") + (sl.road.length() > 0 ? ", " + sl.road : ""), 3, y, tw, 2);
+            }
             g.setColor(follow ? 0x8AB4F8 : 0x80848E);
             y = wrap(g, f, follow ? "Sledování polohy: zap" : "Sledování: vyp (Moje poloha)", 3, y, tw, 1);
             y += 3;

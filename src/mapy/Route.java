@@ -26,11 +26,36 @@ public class Route {
     public Vector steps = new Vector();    // Step
     public Place to;
 
+    /** What the toll avoidance actually did ("" when not asked for). */
+    public String tollNote = "";
+    public boolean noToll;
+
     public static Route plan(double fromLon, double fromLat, double toLon, double toLat, boolean car) throws IOException {
+        return plan(fromLon, fromLat, toLon, toLat, car, false);
+    }
+
+    /**
+     * noToll: avoid paid roads. In Czechia that's the motorways (vignette), elsewhere toll=yes roads;
+     * OSRM's "exclude" works only for classes the server's profile defines, so we try
+     * motorway+toll, then motorway, then toll, and say what was used.
+     */
+    public static Route plan(double fromLon, double fromLat, double toLon, double toLat, boolean car, boolean noToll) throws IOException {
         String url = BASE + (car ? "routed-car" : "routed-foot") + "/route/v1/driving/"
             + Geo.fmt(fromLon, 6) + "," + Geo.fmt(fromLat, 6) + ";" + Geo.fmt(toLon, 6) + "," + Geo.fmt(toLat, 6)
             + "?overview=full&geometries=polyline&steps=true";
-        Net.Response r = Net.get(url, car ? "trasa autem" : "trasa pěšky");
+        Net.Response r = null;
+        String note = "";
+        if (car && noToll) {
+            String[] ex = { "motorway,toll", "motorway", "toll" };
+            String[] names = { "bez dálnic a placených úseků", "bez dálnic (placené známkou)", "bez mýtných úseků (dálnice možné)" };
+            for (int i = 0; i < ex.length && (r == null || r.code != 200); i++) {
+                r = Net.get(url + "&exclude=" + Net.encode(ex[i]), "trasa autem bez placených");
+                Log.add("route exclude=" + ex[i] + ": HTTP " + r.code);
+                if (r.code == 200) note = names[i];
+            }
+            if (r.code != 200) note = "server neumí vyhnout se placeným úsekům: trasa může vést po dálnici";
+        }
+        if (r == null || r.code != 200) r = Net.get(url, car ? "trasa autem" : "trasa pěšky");
         if (r.code != 200) throw new IOException("trasa: HTTP " + r.code);
         Object o = Json.parse(Frpc.utf8Decode(r.body, 0, r.body.length));
         if (!"Ok".equals(Json.str(o, "code"))) throw new IOException("trasa: " + Json.str(o, "code") + " " + Json.str(o, "message"));
@@ -39,6 +64,7 @@ public class Route {
         Hashtable rt = (Hashtable) routes.elementAt(0);
         Route route = new Route();
         route.car = car;
+        route.tollNote = note;
         route.distance = Json.num(rt, "distance");
         route.duration = Json.num(rt, "duration");
         route.decode(Json.str(rt, "geometry"));

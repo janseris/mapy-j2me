@@ -1,9 +1,9 @@
 MIDlet-1: Mapy 9300, /icon.png, mapy.Mapy
 MIDlet-Icon: /icon.png
-MIDlet-Jar-Size: 132627
+MIDlet-Jar-Size: 153162
 MIDlet-Jar-URL: mapy9300.jar
 MIDlet-Name: Mapy 9300
 MIDlet-Vendor: mapy-j2me
-MIDlet-Version: 1.3
+MIDlet-Version: 1.4
 MicroEdition-Configuration: CLDC-1.1
 MicroEdition-Profile: MIDP-2.0

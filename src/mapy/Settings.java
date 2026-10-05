@@ -6,7 +6,7 @@ import javax.microedition.rms.*;
 /** Settings and the last map view, in RMS. */
 public class Settings {
     /** OSM's tile policy wants a User-Agent naming the app; we use our own everywhere. */
-    public static final String DEFAULT_UA = "Mapy9300/1.3 (+https://github.com/janseris/mapy-j2me)";
+    public static final String DEFAULT_UA = "Mapy9300/1.4 (+https://github.com/janseris/mapy-j2me)";
 
     public static String pc = "192.168.137.1:8000";
     public static String userAgent = DEFAULT_UA;
@@ -15,6 +15,8 @@ public class Settings {
     public static String btAddress = DEFAULT_BT;
     /** Keep the map centred on the GPS position. */
     public static boolean follow = true;
+    /** Load and show the road's speed limit (OSM) while moving. */
+    public static boolean speedLimits = true;
     public static boolean pois = true;
     public static double lat = 50.0875, lon = 14.4213;   // Praha
     public static int zoom = 15;
@@ -42,6 +44,7 @@ public class Settings {
                     cacheMB = in.readInt();
                     preview = in.readBoolean();
                     follow = in.readBoolean();
+                    speedLimits = in.readBoolean();
                 } catch (EOFException e) {}
             }
             rs.closeRecordStore();
@@ -67,6 +70,7 @@ public class Settings {
             o.writeInt(cacheMB);
             o.writeBoolean(preview);
             o.writeBoolean(follow);
+            o.writeBoolean(speedLimits);
             byte[] b = bo.toByteArray();
             RecordStore rs = RecordStore.openRecordStore("mapy", true);
             if (rs.getNumRecords() == 0) rs.addRecord(b, 0, b.length);

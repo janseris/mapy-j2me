@@ -60,6 +60,17 @@ public class Geo {
         return sum;
     }
 
+    /** Compass bearing in degrees (0 = north, 90 = east) of a vector east dx, north dy. */
+    public static double bearing(double dx, double dy) {
+        double a;
+        if (dy == 0) a = dx > 0 ? 90 : dx < 0 ? 270 : 0;
+        else {
+            a = Math.toDegrees(atan(dx / dy));
+            if (dy < 0) a += 180;
+        }
+        return (a + 360) % 360;
+    }
+
     public static double atan(double x) {
         if (x < 0) return -atan(-x);
         if (x > 1) return Math.PI / 2 - atan(1 / x);

@@ -36,6 +36,7 @@ public class Mapy extends MIDlet implements CommandListener {
         Settings.load();
         Log.add("start: " + System.getProperty("microedition.platform") + ", view " + Geo.format(Settings.lat, Settings.lon) + " z" + Settings.zoom);
         map = new MapCanvas(this);
+        SpeedLimit.instance.start();
         display.setCurrent(map);
     }
 
@@ -361,24 +362,66 @@ public class Mapy extends MIDlet implements CommandListener {
 
     // ---------------------------------------------------------------- routes
 
-    /** Route to a place: from the GPS position, or (without GPS) from the map cursor. */
-    void planRoute(final Place to, final boolean car) {
+    RouteForm routeForm;
+
+    /** The Odkud / Kam form (keeps its places between uses). */
+    void routeForm() {
+        if (routeForm == null) routeForm = new RouteForm(this);
+        display.setCurrent(routeForm);
+    }
+
+    /** Route to a place from a detail: from the GPS position, or (without GPS) from the map cursor. */
+    void planRoute(Place to, boolean car) {
+        if (routeForm == null) routeForm = new RouteForm(this);
+        routeForm.to = to;
+        routeForm.car = car;
+        Place from = PlacePicker.gpsPlace();
+        if (!Gps.instance.hasFix()) {
+            map.initCursor();
+            from = new Place();
+            from.title = "Kurzor na mapě";
+            from.lon = Geo.xToLon(map.wx(map.mx), map.zoom);
+            from.lat = Geo.yToLat(map.wy(map.my), map.zoom);
+            Log.add("route from the map cursor (no GPS fix)");
+        }
+        planRoute(from, to, car, car && routeForm.noToll, false);
+    }
+
+    /** Plans a route; "Moje poloha" resolves to the current GPS fix. Optionally starts navigation. */
+    void planRoute(final Place from, final Place to, final boolean car, final boolean noToll, final boolean nav) {
         new Task() {
             String name() { return "Trasa"; }
             void work() throws Exception {
-                double fl, fa;
                 Gps g = Gps.instance;
-                if (g.hasFix()) { fl = g.lon; fa = g.lat; }
-                else {
-                    map.initCursor();
-                    fl = Geo.xToLon(map.wx(map.mx), map.zoom);
-                    fa = Geo.yToLat(map.wy(map.my), map.zoom);
-                    Log.add("route from the map cursor (no GPS fix)");
+                double fl = from.lon, fa = from.lat, tl = to.lon, ta = to.lat;
+                if (RouteForm.isGps(from) || RouteForm.isGps(to)) {
+                    if (!g.hasFix()) {
+                        if (!g.running) g.connect();
+                        for (int i = 0; i < 40 && !g.hasFix(); i++) {      // up to 20 s for the first fix
+                            map.status = "Trasa: čekám na GPS (" + g.status + ")";
+                            map.repaintPanel();
+                            Thread.sleep(500);
+                        }
+                        if (!g.hasFix()) throw new Exception("GPS nemá polohu: " + g.status);
+                    }
+                    if (RouteForm.isGps(from)) { fl = g.lon; fa = g.lat; }
+                    if (RouteForm.isGps(to)) { tl = g.lon; ta = g.lat; }
                 }
-                Route r = Route.plan(fl, fa, to.lon, to.lat, car);
-                r.to = to;
-                map.marker = to;
+                Log.add("route " + from.title + " -> " + to.title + (car ? " car" : " foot") + (noToll ? " no toll" : ""));
+                Route r = Route.plan(fl, fa, tl, ta, car, noToll);
+                Place dest = to;
+                if (RouteForm.isGps(to)) { dest = new Place(); dest.title = "Moje poloha"; dest.lon = tl; dest.lat = ta; }
+                r.to = dest;
+                r.noToll = noToll;
+                map.marker = dest;
+                if (r.tollNote.length() > 0) map.status = "Trasa " + r.tollNote;
+                if (nav) {
+                    map.navigating = true;
+                    map.follow = true;
+                    map.cursorHidden = true;
+                }
                 map.setRoute(r);
+                if (nav) map.centerOnGps();
             }
         }.go();
     }
@@ -393,7 +436,8 @@ public class Mapy extends MIDlet implements CommandListener {
                 try {
                     Gps g = Gps.instance;
                     Log.add("off route, recalculating");
-                    Route r = Route.plan(g.lon, g.lat, old.to.lon, old.to.lat, old.car);
+                    Route r = Route.plan(g.lon, g.lat, old.to.lon, old.to.lat, old.car, old.noToll);
+                    r.noToll = old.noToll;
                     r.to = old.to;
                     map.setRoute(r);
                 } catch (Throwable e) {
@@ -436,7 +480,7 @@ public class Mapy extends MIDlet implements CommandListener {
     Form settingsForm;
     static final Command BT_SEARCH = new Command("Hledat GPS zařízení", Command.SCREEN, 2);
     static final Command BT_DEFAULT = new Command("GPS: výchozí Android", Command.SCREEN, 4);
-    ChoiceGroup fPanel, fCache, fPreview, fFollow;
+    ChoiceGroup fPanel, fCache, fPreview, fFollow, fLimits;
     static final int[] CACHE_MB = { 0, 4, 8, 16, 32, 48 };
     static final Command CLEAR_CACHE = new Command("Smazat mezipaměť", Command.SCREEN, 3);
     static final int[] PANEL_WIDTHS = { 110, 130, 150, 180, 210, 240 };
@@ -473,6 +517,9 @@ public class Mapy extends MIDlet implements CommandListener {
         fFollow = new ChoiceGroup("Mapa sleduje polohu GPS", Choice.POPUP, fl, null);
         fFollow.setSelectedIndex(Settings.follow ? 0 : 1, true);
         f.append(fFollow);
+        fLimits = new ChoiceGroup("Rychlostní limity (OSM) při jízdě", Choice.POPUP, fl, null);
+        fLimits.setSelectedIndex(Settings.speedLimits ? 0 : 1, true);
+        f.append(fLimits);
         f.append(fPc);
         f.append(fUa);
         f.append(new StringItem(null, "Mapa, body zájmu a trasy: © OpenStreetMap contributors (openstreetmap.org/copyright), trasy: OSRM na serveru FOSSGIS (routing.openstreetmap.de). Chyba v mapě? openstreetmap.org/fixthemap. Hledání, detaily, fotky a ikony: Mapy.com."));
@@ -519,6 +566,7 @@ public class Mapy extends MIDlet implements CommandListener {
             if (!bt.equals(Settings.btAddress) && Gps.instance.running) Gps.instance.disconnect();
             Settings.btAddress = bt.length() == 12 ? bt : Settings.DEFAULT_BT;
             Settings.follow = fFollow.getSelectedIndex() == 0;
+            Settings.speedLimits = fLimits.getSelectedIndex() == 0;
             map.follow = Settings.follow;
             Settings.cacheMB = CACHE_MB[fCache.getSelectedIndex()];
             Settings.preview = fPreview.getSelectedIndex() == 0;
