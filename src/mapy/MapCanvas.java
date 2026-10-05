@@ -269,6 +269,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     // ---------------------------------------------------------------- commands
 
     public void commandAction(Command c, Displayable d) {
+        lastCommand = System.currentTimeMillis();
+        enterDown = false;              // the Enter that picked this menu item is not a map click
         if (c == SEARCH) app.search("");
         else if (c == OPEN) click();
         else if (c == ZOOM_IN) setZoom(zoom + 1);
@@ -416,7 +418,9 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (mx < 0) { mx = mw() / 2; my = mh() / 2; }
     }
 
-    long shownAt;
+    long shownAt, lastCommand;
+    boolean enterDown;
+    long enterAt;
 
     protected void showNotify() {
         shownAt = System.currentTimeMillis();
@@ -426,6 +430,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     /** Another screen came up (menu choice, Settings...): stop the cursor, forget held keys. */
     protected void hideNotify() {
         kLeft = kRight = kUp = kDown = false;
+        enterDown = false;
     }
 
     protected void keyPressed(int key) { key(key, true, false); }
@@ -454,15 +459,31 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             }
             return;
         }
-        if (!down) return;
+        if (!down) {
+            // Enter clicks when it's released, and only if it was also pressed on the map and no
+            // menu item was picked meanwhile: on the 9300 the menu's Enter also reaches the canvas
+            if ((key == 10 || key == 13 || a == FIRE) && enterDown) {
+                enterDown = false;
+                final long pressed = enterAt;
+                new Thread() {
+                    public void run() {
+                        // wait a moment: the menu's command may be delivered after the key
+                        try { Thread.sleep(300); } catch (InterruptedException e) {}
+                        if (lastCommand < pressed - 800 && pressed - shownAt > 500 && isShown()) click();
+                        else Log.add("enter ignored (menu or screen change)");
+                    }
+                }.start();
+            }
+            return;
+        }
         if (repeat) return;
         if (key == '+' || key == '=' || key == '3') { setZoom(zoom + 1); return; }
         if (key == '-' || key == '1') { setZoom(zoom - 1); return; }
         if (key == '0') { toggleFullScreen(); return; }
         if (key == 'n' || key == 'N' || key == ' ') { next(); return; }
         if (key == 10 || key == 13 || a == FIRE) {
-            // the Enter that picked a menu item or closed another screen can arrive here too
-            if (System.currentTimeMillis() - shownAt > 500) click();
+            enterDown = true;           // clicks on release, see below
+            enterAt = System.currentTimeMillis();
             return;
         }
         if (key > 32 && key < 0x10000 && !Character.isDigit((char) key)) {

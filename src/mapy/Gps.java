@@ -24,6 +24,9 @@ public class Gps implements Runnable, DiscoveryListener {
     public volatile boolean running, fix;
     public volatile double lat, lon, speedKmh, course;
     public volatile long lastFix;
+    /** Diagnostics: bytes and NMEA lines received, lines with a bad checksum, last sentence. */
+    public volatile int bytes, lines, badLines;
+    public volatile String lastLine = "";
     StreamConnection conn;
     String serviceUrl;
     final Object searchDone = new Object();
@@ -147,7 +150,9 @@ public class Gps implements Runnable, DiscoveryListener {
         rpos = rlen = zeroAvail = 0;
         availBroken = false;
         StringBuffer line = new StringBuffer();
-        long lastUi = 0;
+        long lastUi = 0, started = System.currentTimeMillis(), lastDiag = started;
+        bytes = lines = badLines = 0;
+        lastLine = "";
         int ch, eofs = 0;
         while (running) {
             ch = next();
@@ -157,15 +162,28 @@ public class Gps implements Runnable, DiscoveryListener {
                 continue;
             }
             eofs = 0;
+            bytes++;
+            long t = System.currentTimeMillis();
+            if (!hasFix() && t - lastDiag > 2000) {
+                // no position yet: say what arrives, so "waiting" can be told apart from "nothing comes"
+                lastDiag = t;
+                status = bytes + " B, " + lines + " vět" + (lines > 0 ? ", bez polohy: GPS v Androidu ještě nemá fix?" : "") + (lastLine.length() > 0 ? " (" + lastLine + ")" : "");
+                if ((t - started) % 10000 < 2100) Log.add("gps diag: " + status + ", bad " + badLines);
+                notifyListener();
+            }
             if (ch == '\n' || ch == '\r') {
                 if (line.length() == 0) continue;
-                if (Nmea.parse(line.toString())) {
+                lines++;
+                String ln = line.toString();
+                lastLine = ln.length() > 6 ? ln.substring(0, 6) + (ln.indexOf(",A,") > 0 ? " A" : ln.indexOf(",V,") > 0 ? " V" : "") : ln;
+                if (lines <= 5) Log.add("gps line: " + ln);
+                if (Nmea.parse(ln)) {
                     lat = Nmea.lat;
                     lon = Nmea.lon;
                     speedKmh = Nmea.speedKmh;
                     course = Nmea.course;
                     lastFix = System.currentTimeMillis();
-                    if (!fix) { fix = true; status = "poloha OK"; }
+                    if (!fix) { fix = true; status = "poloha OK"; Log.add("gps first fix after " + bytes + " B, " + lines + " lines"); }
                     long now = System.currentTimeMillis();
                     if (now - lastUi > 500) { lastUi = now; notifyListener(); }
                 }
