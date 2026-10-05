@@ -66,6 +66,15 @@ public class Net {
      * tile.openstreetmap.org and Seznam's *.sdn.cz photos redirect to HTTPS.
      */
     static final java.util.Hashtable hostMode = new java.util.Hashtable();   // host -> "http" / "https"
+    static {
+        // known servers (tested from a PC, 2026-10), so they need no first try: plain HTTP works...
+        hostMode.put("tile.opentopomap.org", "http");
+        hostMode.put("ags.cuzk.gov.cz", "http");
+        hostMode.put("overpass-api.de", "http");
+        hostMode.put("routing.openstreetmap.de", "http");
+        // ...or redirects to HTTPS
+        hostMode.put("tile.openstreetmap.org", "https");
+    }
 
     /** The start of a small text response (error pages), for the log. */
     public static String text(Response r) {
@@ -88,8 +97,7 @@ public class Net {
     public static Response get(String url, String label) throws IOException {
         if (Settings.httpFirst && url.startsWith("https://") && url.indexOf("apikey") < 0) {
             String h = host(url);
-            // measured 2026-10: these redirect http:// to https://, no point asking
-            if (h.equals("tile.openstreetmap.org") || h.endsWith(".sdn.cz")) hostMode.put(h, "https");
+            if (h.endsWith(".sdn.cz")) hostMode.put(h, "https");   // Seznam's photo servers (d34-a, d48-a...)
             Object m = hostMode.get(h);
             if (!"https".equals(m)) {
                 String plain = "http://" + url.substring(8);
