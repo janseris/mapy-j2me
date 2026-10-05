@@ -19,6 +19,8 @@ public class Layers {
         "Mapy.com turistická (API klíč)",
         "Mapy.com letecká (API klíč)",
     };
+    /** Short names for the log. */
+    public static final String[] SHORT = { "osm", "otm", "cuzk-ztm", "cuzk-orto", "mapy-outdoor", "mapy-aerial" };
     static final String[] URLS = {
         "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         "https://tile.opentopomap.org/{z}/{x}/{y}.png",

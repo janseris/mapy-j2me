@@ -181,7 +181,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         }
     }
 
-    String parentKey;
+    String parentKey, tileInfo = "";
     Image parentImage;
 
     static String key(int z, int x, int y) { return Layers.current() + ":" + z + "/" + x + "/" + y; }
@@ -215,18 +215,29 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             int px = tx >> d, py = by >> d;
             String pk = key(nz, px, py);
             Image src = d > 0 && pk.equals(parentKey) ? parentImage : null;
+            tileInfo = "TILE " + Layers.SHORT[Layers.current()] + " " + nz + "/" + px + "/" + py + (d > 0 ? " (for z" + z + ")" : "");
             if (src == null) {
                 String url = Layers.url(nz, px, py);
+                long t0 = System.currentTimeMillis();
                 byte[] body = DiskCache.get(url);         // phone storage first, then the network
+                String from = "disk";
+                int code = 200;
                 if (body == null) {
                     Net.Response r = Net.get(url, "dlaždice " + k);
+                    from = "net " + r.scheme;
+                    code = r.code;
                     if (r.code == 200) DiskCache.put(url, r.body);
                     else Log.add("tile " + pk + ": HTTP " + r.code + " " + Net.text(r));
                     body = r.code == 200 ? r.body : null;
+                    tileInfo += " " + from + " HTTP " + code + " " + r.body.length + " B " + r.type + " " + (System.currentTimeMillis() - t0) + " ms";
+                } else {
+                    tileInfo += " disk " + body.length + " B " + (System.currentTimeMillis() - t0) + " ms";
                 }
                 if (body != null) {
+                    long t1 = System.currentTimeMillis();
                     try {
                         src = Image.createImage(body, 0, body.length);
+                        tileInfo += ", decoded " + src.getWidth() + "x" + src.getHeight() + " in " + (System.currentTimeMillis() - t1) + " ms";
                     } catch (IllegalArgumentException e) {
                         // say what arrived: JPEG (baseline/progressive), PNG, an HTML error page...
                         StringBuffer hx = new StringBuffer();
@@ -258,6 +269,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 }
                 if (z == zoom) repaintTile(bx, by);
             }
+            Log.add(tileInfo + (src == null ? ", FAILED" : ", shown"));
         } catch (OutOfMemoryError e) {
             synchronized (tiles) {
                 while (tileOrder.size() > 6) { tiles.remove(tileOrder.elementAt(0)); tileOrder.removeElementAt(0); }
@@ -265,7 +277,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             System.gc();
             Log.add("tile " + k + ": out of memory, cache trimmed");
         } catch (Throwable e) {
-            Log.add("tile " + k + ": " + e);
+            Log.add(tileInfo + ", ERROR " + e);
             failed.put(k, Boolean.TRUE);
             status = "Chyba mapy: " + e.getMessage();
         }

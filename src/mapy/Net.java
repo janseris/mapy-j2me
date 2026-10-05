@@ -19,6 +19,8 @@ public class Net {
         public String type = "";
         public byte[] body = new byte[0];
         public long ms;
+        /** "http" or "https": what the request really used. */
+        public String scheme = "";
     }
 
     /** Something to repaint when the progress changes. */
@@ -217,6 +219,7 @@ public class Net {
                 }
                 phase("čekám na server", 0);
                 Response r = new Response();
+                r.scheme = url.startsWith("https") ? "https" : "http";
                 r.code = c.getResponseCode();
                 long tResp = System.currentTimeMillis();
                 r.type = c.getType() == null ? "" : c.getType();
