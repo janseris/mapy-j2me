@@ -82,8 +82,9 @@ public class Mapy extends MIDlet implements CommandListener {
 
     void error(String what, Throwable e) {
         Log.add(what + ": " + e);
-        if (!mapOnTop()) { map.status = what + ": chyba " + e.getMessage(); return; }
-        Alert a = new Alert("Chyba", what + ":\n" + e.getMessage(), null, AlertType.ERROR);
+        String msg = e.getMessage() != null && !(e instanceof RuntimeException) ? e.getMessage() : e.toString();
+        if (!mapOnTop()) { map.status = what + ": chyba " + msg; return; }
+        Alert a = new Alert("Chyba", what + ":\n" + msg, null, AlertType.ERROR);
         a.setTimeout(Alert.FOREVER);
         display.setCurrent(a, map);
     }
@@ -308,7 +309,8 @@ public class Mapy extends MIDlet implements CommandListener {
                         ImageItem it = new ImageItem(null, im, Item.LAYOUT_CENTER | Item.LAYOUT_NEWLINE_AFTER, "foto");
                         if (f.size() > 0) f.insert(0, it); else f.append(it);
                     } catch (Throwable e) {
-                        Log.add("detail photo: " + e);
+                        Log.add("detail photo " + header + ": " + e);
+                        add(f, "Fotka", "nepodařilo se načíst (" + e + ")");
                     }
                 }
             }.start();

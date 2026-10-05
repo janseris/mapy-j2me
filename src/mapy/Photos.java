@@ -44,6 +44,15 @@ public class Photos {
             images.trim(2);
             System.gc();
             im = Image.createImage(b, 0, b.length);
+        } catch (IllegalArgumentException e) {
+            // not decodable here: log what it is (JPEG baseline/progressive, WebP, an HTML page...)
+            StringBuffer h = new StringBuffer();
+            for (int i = 0; i < Math.min(12, b.length); i++) h.append(Integer.toHexString((b[i] & 0xff) | 0x100).substring(1));
+            boolean progressive = false;
+            for (int i = 0; i + 1 < b.length; i++) if ((b[i] & 0xff) == 0xFF && (b[i + 1] & 0xff) == 0xC2) { progressive = true; break; }
+            Log.add("photo not decodable: " + b.length + " B, starts " + h + (progressive ? ", progressive JPEG" : "") + ", " + url);
+            DiskCache.remove(url);
+            throw new IllegalArgumentException("obrázek nejde dekódovat" + (progressive ? " (progresivní JPEG)" : "") + ", " + b.length + " B");
         }
         images.put(url, im);
         return im;

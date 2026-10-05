@@ -41,7 +41,7 @@ public class Route {
      */
     public static Route plan(double fromLon, double fromLat, double toLon, double toLat, boolean car, boolean noToll) throws IOException {
         String url = BASE + (car ? "routed-car" : "routed-foot") + "/route/v1/driving/"
-            + Geo.fmt(fromLon, 6) + "," + Geo.fmt(fromLat, 6) + ";" + Geo.fmt(toLon, 6) + "," + Geo.fmt(toLat, 6)
+            + Geo.fmt(fromLon, 6) + "," + Geo.fmt(fromLat, 6) + "%3B" + Geo.fmt(toLon, 6) + "," + Geo.fmt(toLat, 6)
             + "?overview=full&geometries=polyline&steps=true";
         Net.Response r = null;
         String note = "";
@@ -56,8 +56,18 @@ public class Route {
             if (r.code != 200) note = "server neumí vyhnout se placeným úsekům: trasa může vést po dálnici";
         }
         if (r == null || r.code != 200) r = Net.get(url, car ? "trasa autem" : "trasa pěšky");
-        if (r.code != 200) throw new IOException("trasa: HTTP " + r.code);
-        Object o = Json.parse(Frpc.utf8Decode(r.body, 0, r.body.length));
+        String text = Frpc.utf8Decode(r.body, 0, r.body.length);
+        if (r.code != 200) {
+            Log.add("route HTTP " + r.code + ": " + (text.length() > 300 ? text.substring(0, 300) : text));
+            throw new IOException("trasa: HTTP " + r.code + " " + (text.length() > 120 ? text.substring(0, 120) : text));
+        }
+        Object o;
+        try {
+            o = Json.parse(text);
+        } catch (RuntimeException e) {
+            Log.add("route response unreadable (" + e + "): " + (text.length() > 300 ? text.substring(0, 300) : text));
+            throw new IOException("trasa: nečitelná odpověď (" + e + ")");
+        }
         if (!"Ok".equals(Json.str(o, "code"))) throw new IOException("trasa: " + Json.str(o, "code") + " " + Json.str(o, "message"));
         Vector routes = Json.arr(o, "routes");
         if (routes.size() == 0) throw new IOException("trasa nenalezena");

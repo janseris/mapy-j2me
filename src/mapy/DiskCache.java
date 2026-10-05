@@ -108,6 +108,11 @@ public class DiskCache {
         if (oldest != null) remove(oldest, (Entry) index.get(oldest));
     }
 
+    public static synchronized void remove(String key) {
+        Entry e = (Entry) index.get(key);
+        if (e != null) remove(key, e);
+    }
+
     private static void remove(String key, Entry e) {
         index.remove(key);
         total -= e.size;

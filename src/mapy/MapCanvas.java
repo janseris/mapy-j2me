@@ -270,6 +270,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     // ---------------------------------------------------------------- commands
 
     public void commandAction(Command c, Displayable d) {
+        if (!internalCommand) undoMenuArrows();
         lastCommand = System.currentTimeMillis();
         Log.add("menu: " + c.getLabel());
         enterDown = false;              // the Enter that picked this menu item is not a map click
@@ -424,6 +425,27 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     }
 
     long shownAt, lastCommand;
+
+    // The phone's "Akce" menu (Menu key) passes its arrow keys to the map too, and Java can't tell
+    // it's open. When a command comes right after a burst of up/down taps, that burst was the menu
+    // being browsed: put the cursor and the map back where they were.
+    static final long BURST_GAP = 2500;
+    long lastArrow;
+    double[] snap;
+    boolean burstVertical;
+    int burstTaps;
+
+    void undoMenuArrows() {
+        double[] s = snap;
+        if (s == null || !burstVertical || System.currentTimeMillis() - lastArrow > BURST_GAP) return;
+        kLeft = kRight = kUp = kDown = false;
+        cx = s[0]; cy = s[1]; mx = (int) s[2]; my = (int) s[3];
+        if ((int) s[4] != zoom) { zoom = (int) s[4]; }
+        snap = null;
+        hovered = objectAt(mx, my, HOVER_R);
+        Log.add("menu arrows undone (" + burstTaps + " keys)");
+        viewChanged();
+    }
     boolean enterDown;
     long enterAt;
 
@@ -461,10 +483,19 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             if (a == RIGHT) kRight = down;
             if (a == UP) kUp = down;
             if (a == DOWN) kDown = down;
+            long now = System.currentTimeMillis();
             if (down && !repeat) {
+                if (now - lastArrow > BURST_GAP) {         // a new burst of arrow keys: remember the view
+                    snap = new double[] { cx, cy, mx, my, zoom };
+                    burstVertical = true;
+                    burstTaps = 0;
+                }
+                if (a == LEFT || a == RIGHT) burstVertical = false;
+                burstTaps++;
                 moveCursor((a == RIGHT ? 3 : a == LEFT ? -3 : 0), (a == DOWN ? 3 : a == UP ? -3 : 0));   // react at once
                 startMover();
             }
+            lastArrow = now;
             return;
         }
         if (!down) {
@@ -488,6 +519,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (key == '+' || key == '=' || key == '3') { setZoom(zoom + 1); return; }
         if (key == '-' || key == '1') { setZoom(zoom - 1); return; }
         if (key == '0') { toggleFullScreen(); return; }
+        if (key == 27) { undoMenuArrows(); return; }
         if (key == 'n' || key == 'N' || key == ' ') { next(); return; }
         if (key == 10 || key == 13 || a == FIRE) {
             enterDown = true;           // clicks on release, see below
@@ -505,6 +537,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     static final Command[] MENU_ITEMS = { OPEN, ROUTE, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, EXIT };
     volatile boolean menuOpen;
+    boolean internalCommand;
     int menuSel, menuTop;
 
     void openMenu() {
@@ -530,7 +563,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         else if (a == FIRE || a == RIGHT || key == 10 || key == 13) {
             Command c = MENU_ITEMS[menuSel];
             closeMenu();
-            commandAction(c, this);
+            internalCommand = true;
+            try { commandAction(c, this); } finally { internalCommand = false; }
             return;
         } else if (a == LEFT || key == 27 || key == 8 || key == -8) { closeMenu(); return; }
         else if (key >= '1' && key <= '9' && key - '1' < n) { menuSel = key - '1'; }
@@ -572,17 +606,20 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     }
 
     // cursor speed in pixels per second: starts slow for precise pointing, accelerates while held
-    static final double V0 = 70, VMAX = 420, ACCEL = 700;
+    static final double V0 = 50, VMAX = 300, ACCEL = 220;
+    /** A tap only nudges the cursor; it glides when the key is held this long. */
+    static final long HOLD_MS = 250;
 
     void startMover() {
         if (mover != null && mover.isAlive()) return;
         mover = new Thread() {
             public void run() {
                 double v = V0, fx = 0, fy = 0;
+                try { Thread.sleep(HOLD_MS); } catch (InterruptedException e) {}
                 long last = System.currentTimeMillis(), started = last;
                 // moves while a direction is held (keyReleased stops it); time-based, so uneven
                 // timer ticks (62 ms resolution on the 9300) don't make it jerky
-                while ((kLeft || kRight || kUp || kDown) && System.currentTimeMillis() - started < 30000) {
+                while ((kLeft || kRight || kUp || kDown) && System.currentTimeMillis() - started < 15000) {
                     try { Thread.sleep(25); } catch (InterruptedException e) {}
                     long now = System.currentTimeMillis();
                     double dt = (now - last) / 1000.0;
@@ -597,6 +634,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                     if (ix != 0 || iy != 0) {
                         fx -= ix;
                         fy -= iy;
+                        burstVertical = false;      // a held key moving the cursor: real map use, not the menu
                         moveCursor(ix, iy);
                     }
                 }
