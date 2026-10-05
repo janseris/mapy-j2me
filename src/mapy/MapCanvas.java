@@ -25,6 +25,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     static final Command SEARCH = new Command("Hledat", Command.SCREEN, 1);
     static final Command ZOOM_IN = new Command("Přiblížit", Command.SCREEN, 2);
     static final Command ZOOM_OUT = new Command("Oddálit", Command.SCREEN, 3);
+    static final Command MENU = new Command("Menu", Command.SCREEN, 4);
     static final Command OPEN = new Command("Otevřít", Command.SCREEN, 4);
     static final Command MYPOS = new Command("Moje poloha (GPS)", Command.SCREEN, 5);
     static final Command FOLLOW = new Command("Sledovat polohu zap/vyp", Command.SCREEN, 5);
@@ -89,10 +90,9 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         zoom = Settings.zoom;
         try { setFullScreenMode(true); } catch (Throwable e) { fullScreen = false; }
         center(Settings.lat, Settings.lon);
-        addCommand(SEARCH); addCommand(ZOOM_IN); addCommand(ZOOM_OUT); addCommand(OPEN);
-        addCommand(MYPOS); addCommand(FOLLOW); addCommand(GPS); addCommand(NAV); addCommand(CLEAR_ROUTE);
-        addCommand(NEXT); addCommand(HERE); addCommand(POIS); addCommand(FULL); addCommand(RELOAD);
-        addCommand(LOG); addCommand(SETTINGS); addCommand(EXIT);
+        // only the side buttons: the phone's own menu passes its arrow keys to the map, so the
+        // rest is in our menu drawn on the map (side button 4), which owns the keys while open
+        addCommand(SEARCH); addCommand(ZOOM_IN); addCommand(ZOOM_OUT); addCommand(MENU);
         setCommandListener(this);
         Net.listener = this;
         Gps.instance.listener = this;
@@ -272,6 +272,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         lastCommand = System.currentTimeMillis();
         Log.add("menu: " + c.getLabel());
         enterDown = false;              // the Enter that picked this menu item is not a map click
+        if (c == MENU) { if (menuOpen) closeMenu(); else openMenu(); return; }
+        if (menuOpen) closeMenu();
         if (c == SEARCH) app.search("");
         else if (c == OPEN) click();
         else if (c == ZOOM_IN) setZoom(zoom + 1);
@@ -431,6 +433,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     /** Another screen came up (menu choice, Settings...): stop the cursor, forget held keys. */
     protected void hideNotify() {
         kLeft = kRight = kUp = kDown = false;
+        menuOpen = false;
         enterDown = false;
     }
 
@@ -442,6 +445,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         initCursor();
         int a = 0;
         try { a = getGameAction(key); } catch (Throwable e) {}
+        if (menuOpen) { menuKey(key, a, down); return; }
         if (down && !repeat) {
             String name = "";
             try { name = getKeyName(key); } catch (Throwable e) {}
@@ -495,6 +499,76 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         repaintPanel();                                  // show the unknown key code
     }
 
+    // ---------------------------------------------------------------- our menu
+
+    static final Command[] MENU_ITEMS = { OPEN, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, EXIT };
+    volatile boolean menuOpen;
+    int menuSel, menuTop;
+
+    void openMenu() {
+        kLeft = kRight = kUp = kDown = false;
+        enterDown = false;
+        menuOpen = true;
+        menuSel = 0;
+        menuTop = 0;
+        repaint();
+    }
+
+    void closeMenu() {
+        menuOpen = false;
+        repaint();
+    }
+
+    /** Keys while our menu is open: up/down choose, Enter or right picks, left / Esc closes. */
+    void menuKey(int key, int a, boolean down) {
+        if (!down) return;                       // releases (and the Enter release) end here too
+        int n = MENU_ITEMS.length;
+        if (a == UP) menuSel = (menuSel + n - 1) % n;
+        else if (a == DOWN) menuSel = (menuSel + 1) % n;
+        else if (a == FIRE || a == RIGHT || key == 10 || key == 13) {
+            Command c = MENU_ITEMS[menuSel];
+            closeMenu();
+            commandAction(c, this);
+            return;
+        } else if (a == LEFT || key == 27 || key == 8 || key == -8) { closeMenu(); return; }
+        else if (key >= '1' && key <= '9' && key - '1' < n) { menuSel = key - '1'; }
+        repaint();
+    }
+
+    String menuLabel(Command c) {
+        if (c == FOLLOW) return "Sledovat polohu: " + (follow ? "zap" : "vyp");
+        if (c == GPS) return Gps.instance.running ? "GPS odpojit" : "GPS připojit";
+        if (c == NAV) return navigating ? "Navigace stop" : "Navigace start";
+        if (c == POIS) return "Body zájmu: " + (Settings.pois ? "zap" : "vyp");
+        if (c == FULL) return "Celá obrazovka: " + (fullScreen ? "zap" : "vyp");
+        return c.getLabel();
+    }
+
+    void paintMenu(Graphics g, int w, int h) {
+        Font f = small(), b = bold();
+        int ih = f.getHeight() + 3, n = MENU_ITEMS.length;
+        int mw0 = 0;
+        for (int i = 0; i < n; i++) mw0 = Math.max(mw0, b.stringWidth(menuLabel(MENU_ITEMS[i])));
+        int bw = Math.min(w - 4, mw0 + 26), rows = Math.min(n, (h - 8) / ih);
+        if (menuSel < menuTop) menuTop = menuSel;
+        if (menuSel >= menuTop + rows) menuTop = menuSel - rows + 1;
+        int bh = rows * ih + 4, x0 = w - bw - 2, y0 = 2;
+        g.setColor(0x2B2D31);
+        g.fillRect(x0, y0, bw, bh);
+        g.setColor(0x8AB4F8);
+        g.drawRect(x0, y0, bw - 1, bh - 1);
+        for (int r = 0; r < rows; r++) {
+            int i = menuTop + r, y = y0 + 2 + r * ih;
+            if (i == menuSel) { g.setColor(0x1565C0); g.fillRect(x0 + 2, y, bw - 4, ih); }
+            g.setFont(i == menuSel ? b : f);
+            g.setColor(i == menuSel ? 0xFFFFFF : 0xDBDEE1);
+            g.drawString(menuLabel(MENU_ITEMS[i]), x0 + 6, y + 1, Graphics.TOP | Graphics.LEFT);
+        }
+        g.setColor(0x80848E);
+        if (menuTop > 0) g.fillTriangle(x0 + bw - 10, y0 + 8, x0 + bw - 6, y0 + 4, x0 + bw - 2, y0 + 8);
+        if (menuTop + rows < n) g.fillTriangle(x0 + bw - 10, y0 + bh - 8, x0 + bw - 6, y0 + bh - 4, x0 + bw - 2, y0 + bh - 8);
+    }
+
     // cursor speed in pixels per second: starts slow for precise pointing, accelerates while held
     static final double V0 = 70, VMAX = 420, ACCEL = 700;
 
@@ -532,6 +606,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     /** Moves the cursor; past the edge the map scrolls instead. */
     synchronized void moveCursor(int dx, int dy) {
+        if (menuOpen) return;
         if (!isShown()) { kLeft = kRight = kUp = kDown = false; return; }
         cursorHidden = false;
         int w = mw(), h = mh();
@@ -696,8 +771,10 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 g.drawArc(cx0 - 8, cy0 - 8, 16, 16, 0, 360);
                 g.fillRect(cx0 - 4, cy0 - 1, 9, 3);
                 if (i == 1) g.fillRect(cx0 - 1, cy0 - 4, 3, 9);
-            } else {                            // open: pointer clicking
-                cursor(g, cx0 - 4, cy0 - 8);
+            } else {                            // menu: three lines
+                g.fillRect(cx0 - 7, cy0 - 6, 14, 2);
+                g.fillRect(cx0 - 7, cy0 - 1, 14, 2);
+                g.fillRect(cx0 - 7, cy0 + 4, 14, 2);
             }
         }
     }
@@ -706,7 +783,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (i == 0) app.search("");
         else if (i == 1) setZoom(zoom + 1);
         else if (i == 2) setZoom(zoom - 1);
-        else click();
+        else if (menuOpen) closeMenu();
+        else openMenu();
     }
 
     void paintMap(Graphics g, int w, int h) {
@@ -753,6 +831,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         paintGps(g, ox, oy);
         if (!(follow && cursorHidden)) cursor(g, mx < 0 ? w / 2 : mx, my < 0 ? h / 2 : my);
         paintSpeed(g, w, h);
+        if (menuOpen) paintMenu(g, w, h);
     }
 
     void paintRoute(Graphics g, int ox, int oy, int w, int h) {
@@ -1005,7 +1084,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             g.setColor(0x80848E);
             String help = Settings.pois && zoom < POI_ZOOM
                 ? "Body zájmu od přiblížení " + POI_ZOOM + ". Enter = co je tady."
-                : "Najeď kurzorem na bod, Enter = otevřít. N = další bod.";
+                : "Najeď kurzorem na bod, Enter = otevřít. N = další bod. Menu: 4. boční tlačítko.";
             y = wrap(g, f, help, 3, y, tw, 4);
         }
         // bottom: last key (for finding Chr+arrow codes), zoom, credits

@@ -315,7 +315,7 @@ public class Mapy extends MIDlet implements CommandListener {
         f.setCommandListener(this);
         if (!mapOnTop()) {
             Log.add("detail " + p.title + " ready, not shown: another screen is open");
-            map.status = "Detail " + p.title + " připraven (Otevřít)";
+            map.status = "Detail " + p.title + " připraven (Enter)";
             return;
         }
         detailForm = f;
