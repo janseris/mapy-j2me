@@ -458,14 +458,20 @@ public class Mapy extends MIDlet implements CommandListener {
     // ---------------------------------------------------------------- log, settings
 
     void showLog() {
-        Form f = new Form("Log");
-        String s = Log.text();
-        if (s.length() > 6000) s = "...\n" + s.substring(s.length() - 6000);
-        f.append(s);
-        f.addCommand(BACK);
-        f.addCommand(SEND);
-        f.setCommandListener(this);
-        display.setCurrent(f);
+        try {
+            Form f = new Form("Log");
+            String s = Log.text();
+            if (s.length() > 4000) s = "...\n" + s.substring(s.length() - 4000);
+            f.append(new StringItem(null, s));
+            f.addCommand(SEND);
+            f.addCommand(BACK);
+            f.setCommandListener(this);
+            display.setCurrent(f);
+        } catch (Throwable e) {
+            Log.add("showLog: " + e);
+            map.status = "Log nejde zobrazit: " + e + " (Menu: Odeslat log na PC)";
+            map.repaint();
+        }
     }
 
     void sendLog() {

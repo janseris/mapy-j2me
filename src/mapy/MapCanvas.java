@@ -224,7 +224,20 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                     else Log.add("tile " + pk + ": HTTP " + r.code);
                     body = r.code == 200 ? r.body : null;
                 }
-                if (body != null) src = Image.createImage(body, 0, body.length);
+                if (body != null) {
+                    try {
+                        src = Image.createImage(body, 0, body.length);
+                    } catch (IllegalArgumentException e) {
+                        // say what arrived: JPEG (baseline/progressive), PNG, an HTML error page...
+                        StringBuffer hx = new StringBuffer();
+                        for (int i = 0; i < Math.min(16, body.length); i++) hx.append(Integer.toHexString((body[i] & 0xff) | 0x100).substring(1));
+                        boolean prog = false;
+                        for (int i = 0; i + 1 < body.length; i++) if ((body[i] & 0xff) == 0xFF && (body[i + 1] & 0xff) == 0xC2) { prog = true; break; }
+                        Log.add("tile " + pk + " not decodable: " + body.length + " B, starts " + hx + (prog ? ", progressive JPEG" : ""));
+                        DiskCache.remove(url);
+                        throw new IllegalArgumentException("dlaždice nejde zobrazit" + (prog ? " (progresivní JPEG)" : "") + ", " + body.length + " B");
+                    }
+                }
                 if (d > 0) { parentKey = pk; parentImage = src; }
             }
             if (src == null) {
@@ -352,6 +365,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             viewChanged();
         }
         else if (c == LOG) app.showLog();
+        else if (c == SEND_LOG) app.sendLog();
         else if (c == SIDE_KEYS) startCalibration();
         else if (c == LAYER) app.chooseLayer();
         else if (c == SETTINGS) app.settings();
@@ -685,7 +699,9 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     static final Command LAYER = new Command("Typ mapy", Command.SCREEN, 6);
     static final Command SIDE_KEYS = new Command("Nastavit boční tlačítka", Command.SCREEN, 11);
-    static final Command[] MENU_ITEMS = { OPEN, SEARCH, ROUTE, ZOOM_IN, ZOOM_OUT, LAYER, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, SIDE_KEYS, EXIT };
+    static final Command SEND_LOG = new Command("Odeslat log na PC", Command.SCREEN, 10);
+    static final Command[] MENU_ITEMS = { OPEN, SEARCH, ROUTE, MYPOS, LAYER, SETTINGS, ZOOM_IN, ZOOM_OUT, FOLLOW, GPS, NAV,
+        CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, SEND_LOG, LOG, SIDE_KEYS, EXIT };
     volatile boolean menuOpen;
     boolean internalCommand;
     int menuSel, menuTop;
@@ -717,8 +733,24 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             try { commandAction(c, this); } finally { internalCommand = false; }
             return;
         } else if (a == LEFT || key == 27 || key == 8 || key == -8) { closeMenu(); return; }
-        else if (key >= '1' && key <= '9' && key - '1' < n) { menuSel = key - '1'; }
+        else if (key > 32 && key < 0x10000) {
+            // jump to the next item starting with this letter (like a file list); digits pick by number
+            char want = base((char) key);
+            if (key >= '1' && key <= '9' && key - '1' < n) menuSel = key - '1';
+            else for (int i = 1; i <= n; i++) {
+                int j = (menuSel + i) % n;
+                String l = menuLabel(MENU_ITEMS[j]);
+                if (l.length() > 0 && base(l.charAt(0)) == want) { menuSel = j; break; }
+            }
+        }
         repaint();
+    }
+
+    /** Upper case without the Czech accent: 'č' -> 'C', 'Ř' -> 'R'. */
+    static char base(char c) {
+        String from = "áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ", to = "ACDEEINORSTUUYZACDEEINORSTUUYZ";
+        int i = from.indexOf(c);
+        return i >= 0 ? to.charAt(i) : Character.toUpperCase(c);
     }
 
     /** Keyboard shortcuts on the map (Czech initials), shown in the menu. */
