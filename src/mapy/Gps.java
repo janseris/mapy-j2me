@@ -199,4 +199,13 @@ public class Gps implements Runnable, DiscoveryListener {
         }
         return b.toString();
     }
+
+    /** 0C7165CF2E7E -> 0C:71:65:CF:2E:7E */
+    public static String pretty(String a) {
+        a = clean(a);
+        if (a.length() != 12) return a;
+        StringBuffer b = new StringBuffer();
+        for (int i = 0; i < 12; i += 2) { if (i > 0) b.append(':'); b.append(a.substring(i, i + 2)); }
+        return b.toString();
+    }
 }

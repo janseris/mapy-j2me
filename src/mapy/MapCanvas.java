@@ -27,6 +27,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     static final Command ZOOM_OUT = new Command("Oddálit", Command.SCREEN, 3);
     static final Command OPEN = new Command("Otevřít", Command.SCREEN, 4);
     static final Command MYPOS = new Command("Moje poloha (GPS)", Command.SCREEN, 5);
+    static final Command FOLLOW = new Command("Sledovat polohu zap/vyp", Command.SCREEN, 5);
     static final Command GPS = new Command("GPS připojit/odpojit", Command.SCREEN, 5);
     static final Command NAV = new Command("Navigace start/stop", Command.SCREEN, 5);
     static final Command CLEAR_ROUTE = new Command("Zrušit trasu", Command.SCREEN, 5);
@@ -73,7 +74,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         new Thread() {
             public void run() {
                 try { Thread.sleep(1000); } catch (InterruptedException e) {}
-                if (hovered == p) app.preview(p);
+                if (hovered == p && isShown()) app.preview(p);
             }
         }.start();
     }
@@ -89,7 +90,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         try { setFullScreenMode(true); } catch (Throwable e) { fullScreen = false; }
         center(Settings.lat, Settings.lon);
         addCommand(SEARCH); addCommand(ZOOM_IN); addCommand(ZOOM_OUT); addCommand(OPEN);
-        addCommand(MYPOS); addCommand(GPS); addCommand(NAV); addCommand(CLEAR_ROUTE);
+        addCommand(MYPOS); addCommand(FOLLOW); addCommand(GPS); addCommand(NAV); addCommand(CLEAR_ROUTE);
         addCommand(NEXT); addCommand(HERE); addCommand(POIS); addCommand(FULL); addCommand(RELOAD);
         addCommand(LOG); addCommand(SETTINGS); addCommand(EXIT);
         setCommandListener(this);
@@ -282,16 +283,29 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             viewChanged();
         }
         else if (c == FULL) toggleFullScreen();
+        else if (c == FOLLOW) {
+            follow = !follow;
+            Settings.follow = follow;
+            Settings.save();
+            if (follow) {
+                cursorHidden = true;
+                if (Gps.instance.hasFix()) centerOnGps();
+                else if (!Gps.instance.running) Gps.instance.connect();
+            }
+            status = follow ? "Sledování polohy zapnuto" : "Sledování polohy vypnuto";
+            repaint();
+        }
         else if (c == GPS) { if (Gps.instance.running) Gps.instance.disconnect(); else Gps.instance.connect(); repaintPanel(); }
         else if (c == MYPOS) {
-            if (Gps.instance.hasFix()) { follow = true; centerOnGps(); }
+            if (Gps.instance.hasFix()) { follow = true; cursorHidden = true; centerOnGps(); }
             else { status = "GPS: " + Gps.instance.status; if (!Gps.instance.running) Gps.instance.connect(); repaintPanel(); }
         }
         else if (c == NAV) {
             if (route == null) { status = "Nejdřív naplánuj trasu (detail místa: Trasa sem)"; repaintPanel(); }
             else {
                 navigating = !navigating;
-                follow = navigating;
+                follow = navigating || Settings.follow;
+                cursorHidden = follow;
                 if (navigating && !Gps.instance.running) Gps.instance.connect();
                 if (navigating && Gps.instance.hasFix()) centerOnGps();
                 repaint();
@@ -325,7 +339,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     // ---------------------------------------------------------------- route, GPS, navigation
 
     Route route;
-    boolean navigating, follow;
+    boolean navigating, follow = Settings.follow, cursorHidden;
+    boolean hadFix;
     double routeAt, offRoute;
     int offCount;
     long lastReroute;
@@ -353,10 +368,19 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         viewChanged();
     }
 
+    /**
+     * Centres on the GPS position. When moving, the position sits a bit behind the centre so more
+     * of the way ahead is visible, like in the phone app.
+     */
     void centerOnGps() {
         Gps g = Gps.instance;
         if (navigating && zoom < 16) zoom = 17;
         center(g.lat, g.lon);
+        if (g.speedKmh > 5) {
+            double a = Math.toRadians(g.course), ahead = Math.min(mw(), mh()) / 4;
+            cx += Math.sin(a) * ahead;
+            cy -= Math.cos(a) * ahead;
+        }
         viewChanged();
     }
 
@@ -375,7 +399,10 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 app.reroute();
             }
         }
-        if (g.hasFix() && follow) centerOnGps();
+        boolean f = g.hasFix();
+        if (f && !hadFix && follow) cursorHidden = true;      // first fix: jump to it
+        hadFix = f;
+        if (f && follow && isShown()) centerOnGps();
         else repaint();
     }
 
@@ -387,6 +414,18 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     void initCursor() {
         if (mx < 0) { mx = mw() / 2; my = mh() / 2; }
+    }
+
+    long shownAt;
+
+    protected void showNotify() {
+        shownAt = System.currentTimeMillis();
+        kLeft = kRight = kUp = kDown = false;
+    }
+
+    /** Another screen came up (menu choice, Settings...): stop the cursor, forget held keys. */
+    protected void hideNotify() {
+        kLeft = kRight = kUp = kDown = false;
     }
 
     protected void keyPressed(int key) { key(key, true, false); }
@@ -421,7 +460,11 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (key == '-' || key == '1') { setZoom(zoom - 1); return; }
         if (key == '0') { toggleFullScreen(); return; }
         if (key == 'n' || key == 'N' || key == ' ') { next(); return; }
-        if (key == 10 || key == 13 || a == FIRE) { click(); return; }
+        if (key == 10 || key == 13 || a == FIRE) {
+            // the Enter that picked a menu item or closed another screen can arrive here too
+            if (System.currentTimeMillis() - shownAt > 500) click();
+            return;
+        }
         if (key > 32 && key < 0x10000 && !Character.isDigit((char) key)) {
             app.search(String.valueOf((char) key));     // typing starts a search
             return;
@@ -466,6 +509,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     /** Moves the cursor; past the edge the map scrolls instead. */
     synchronized void moveCursor(int dx, int dy) {
+        if (!isShown()) { kLeft = kRight = kUp = kDown = false; return; }
+        cursorHidden = false;
         int w = mw(), h = mh();
         int ox = mx, oy = my;
         int nx = mx + dx, ny = my + dy;
@@ -482,6 +527,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         hovered = objectAt(mx, my, HOVER_R);
         if (hovered != before) hoverChanged(hovered);
         if (panned) {
+            if (follow) status = "Sledování vypnuto (Menu: Moje poloha)";
             follow = false;
             viewChanged();
         } else if (hovered != before) {
@@ -498,6 +544,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     /** Click: open the hovered object, or "what's here" at the cursor. */
     void click() {
+        if (!isShown()) return;
         initCursor();
         Place p = objectAt(mx, my, HOVER_R);
         if (p != null) {
@@ -680,7 +727,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             label(g, hov.title, px, py - (hov.osm ? 13 : 23), w);
         }
         paintGps(g, ox, oy);
-        if (!follow) cursor(g, mx < 0 ? w / 2 : mx, my < 0 ? h / 2 : my);
+        if (!(follow && cursorHidden)) cursor(g, mx < 0 ? w / 2 : mx, my < 0 ? h / 2 : my);
+        paintSpeed(g, w, h);
     }
 
     void paintRoute(Graphics g, int ox, int oy, int w, int h) {
@@ -714,18 +762,79 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         Gps gp = Gps.instance;
         if (!gp.hasFix()) return;
         int x = (int) (Geo.lonToX(gp.lon, zoom) - ox), y = (int) (Geo.latToY(gp.lat, zoom) - oy);
-        if (gp.speedKmh > 2) {          // heading wedge
-            double a = Math.toRadians(gp.course);
-            int tx = x + (int) (Math.sin(a) * 16), ty = y - (int) (Math.cos(a) * 16);
-            int lx = x + (int) (Math.sin(a - 2.6) * 7), ly = y - (int) (Math.cos(a - 2.6) * 7);
-            int rx = x + (int) (Math.sin(a + 2.6) * 7), ry = y - (int) (Math.cos(a + 2.6) * 7);
-            g.setColor(0x1565C0);
-            g.fillTriangle(tx, ty, lx, ly, rx, ry);
+        if (gp.speedKmh > 2) {
+            // moving: a navigation arrow pointing where we go
+            g.setColor(0xFFFFFF);
+            arrow(g, x, y, gp.course, 14);
+            g.setColor(0x1E88E5);
+            arrow(g, x, y, gp.course, 11);
+        } else {
+            g.setColor(0xFFFFFF);
+            g.fillArc(x - 8, y - 8, 16, 16, 0, 360);
+            g.setColor(0x1E88E5);
+            g.fillArc(x - 6, y - 6, 12, 12, 0, 360);
         }
+    }
+
+    /** Arrow head (chevron with a notch) centred on x, y, pointing to course degrees, size r. */
+    static void arrow(Graphics g, int x, int y, double course, int r) {
+        double a = Math.toRadians(course);
+        double s = Math.sin(a), c = Math.cos(a);
+        int tx = x + (int) (s * r), ty = y - (int) (c * r);                               // tip
+        int lx = x + (int) (Math.sin(a - 2.5) * r), ly = y - (int) (Math.cos(a - 2.5) * r);
+        int rx = x + (int) (Math.sin(a + 2.5) * r), ry = y - (int) (Math.cos(a + 2.5) * r);
+        int nx = x - (int) (s * r * 0.35), ny = y + (int) (c * r * 0.35);              // notch
+        g.fillTriangle(tx, ty, lx, ly, nx, ny);
+        g.fillTriangle(tx, ty, rx, ry, nx, ny);
+    }
+
+    static final String[] DIRS = { "S", "SV", "V", "JV", "J", "JZ", "Z", "SZ" };
+
+    static String direction(double course) {
+        int i = (int) ((course + 22.5) / 45) & 7;
+        return DIRS[i] + " " + (int) course + "°";
+    }
+
+    /** Speed and heading box in the map's bottom left corner, like the phone app. */
+    void paintSpeed(Graphics g, int w, int h) {
+        Gps gp = Gps.instance;
+        if (!gp.hasFix()) return;
+        Font big = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_BOLD, Font.SIZE_LARGE), f = small();
+        String sp = String.valueOf((int) (gp.speedKmh + 0.5));
+        int bw = Math.max(big.stringWidth(sp), f.stringWidth("km/h")) + 40, bh = big.getHeight() + f.getHeight() + 2;
+        int x0 = 3, y0 = h - bh - 3;
         g.setColor(0xFFFFFF);
-        g.fillArc(x - 8, y - 8, 16, 16, 0, 360);
-        g.setColor(0x1E88E5);
-        g.fillArc(x - 6, y - 6, 12, 12, 0, 360);
+        g.fillRoundRect(x0, y0, bw, bh, 8, 8);
+        g.setColor(0x1565C0);
+        g.drawRoundRect(x0, y0, bw, bh, 8, 8);
+        g.setFont(big);
+        g.setColor(0x000000);
+        g.drawString(sp, x0 + 5, y0 + 1, Graphics.TOP | Graphics.LEFT);
+        g.setFont(f);
+        g.setColor(0x444444);
+        g.drawString("km/h", x0 + 5, y0 + 1 + big.getHeight(), Graphics.TOP | Graphics.LEFT);
+        compass(g, x0 + bw - 17, y0 + bh / 2, 14, gp.speedKmh > 2 ? gp.course : -1);
+        if (follow) {
+            g.setColor(0x1565C0);
+            g.fillArc(x0 + bw - 6, y0 - 3, 8, 8, 0, 360);         // dot = following
+        }
+    }
+
+    /** Compass: a ring with N on top and the heading arrow; course < 0 = unknown (standing). */
+    static void compass(Graphics g, int x, int y, int r, double course) {
+        g.setColor(0xE8EAED);
+        g.fillArc(x - r, y - r, 2 * r, 2 * r, 0, 360);
+        g.setColor(0x80848E);
+        g.drawArc(x - r, y - r, 2 * r, 2 * r, 0, 360);
+        g.setColor(0xD32F2F);
+        g.fillTriangle(x, y - r + 1, x - 3, y - r + 6, x + 3, y - r + 6);       // north tick
+        if (course >= 0) {
+            g.setColor(0x1E88E5);
+            arrow(g, x, y, course, r - 4);
+        } else {
+            g.setColor(0x1E88E5);
+            g.fillArc(x - 3, y - 3, 6, 6, 0, 360);
+        }
     }
 
     static void dot(Graphics g, int x, int y, int r, int color) {
@@ -825,6 +934,21 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         } else if (Gps.instance.running && !Gps.instance.hasFix()) {
             g.setColor(0x80848E);
             y = wrap(g, f, "GPS: " + Gps.instance.status, 3, y, tw, 2);
+        }
+        Gps gq = Gps.instance;
+        if (gq.hasFix()) {
+            // speed, heading and whether the map follows
+            compass(g, 3 + 13, y + 13, 13, gq.speedKmh > 2 ? gq.course : -1);
+            g.setFont(b);
+            g.setColor(0xFFFFFF);
+            g.drawString((int) (gq.speedKmh + 0.5) + " km/h", 32, y, Graphics.TOP | Graphics.LEFT);
+            g.setFont(f);
+            g.setColor(0xB5BAC1);
+            g.drawString(gq.speedKmh > 2 ? direction(gq.course) : "stojím", 32, y + b.getHeight(), Graphics.TOP | Graphics.LEFT);
+            y += Math.max(28, b.getHeight() + fh) + 1;
+            g.setColor(follow ? 0x8AB4F8 : 0x80848E);
+            y = wrap(g, f, follow ? "Sledování polohy: zap" : "Sledování: vyp (Moje poloha)", 3, y, tw, 1);
+            y += 3;
         }
         Place hov = hovered;
         if (hov != null) {

@@ -6,11 +6,15 @@ import javax.microedition.rms.*;
 /** Settings and the last map view, in RMS. */
 public class Settings {
     /** OSM's tile policy wants a User-Agent naming the app; we use our own everywhere. */
-    public static final String DEFAULT_UA = "Mapy9300/0.9 (+https://github.com/janseris/mapy-j2me)";
+    public static final String DEFAULT_UA = "Mapy9300/1.0 (+https://github.com/janseris/mapy-j2me)";
 
     public static String pc = "192.168.137.1:8000";
     public static String userAgent = DEFAULT_UA;
-    public static String btAddress = "";
+    /** The Android phone sharing its GPS (GPS NMEA Tether). */
+    public static final String DEFAULT_BT = "0C7165CF2E7E";
+    public static String btAddress = DEFAULT_BT;
+    /** Keep the map centred on the GPS position. */
+    public static boolean follow = true;
     public static boolean pois = true;
     public static double lat = 50.0875, lon = 14.4213;   // Praha
     public static int zoom = 15;
@@ -37,9 +41,12 @@ public class Settings {
                     panelWidth = in.readInt();
                     cacheMB = in.readInt();
                     preview = in.readBoolean();
+                    follow = in.readBoolean();
                 } catch (EOFException e) {}
             }
             rs.closeRecordStore();
+            if (Gps.clean(btAddress).length() != 12) btAddress = DEFAULT_BT;
+            if (userAgent.startsWith("Mapy9300/")) userAgent = DEFAULT_UA;     // old version's default
         } catch (Throwable e) {
             Log.add("settings load: " + e);
         }
@@ -59,6 +66,7 @@ public class Settings {
             o.writeInt(panelWidth);
             o.writeInt(cacheMB);
             o.writeBoolean(preview);
+            o.writeBoolean(follow);
             byte[] b = bo.toByteArray();
             RecordStore rs = RecordStore.openRecordStore("mapy", true);
             if (rs.getNumRecords() == 0) rs.addRecord(b, 0, b.length);

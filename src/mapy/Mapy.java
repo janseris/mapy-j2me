@@ -55,8 +55,28 @@ public class Mapy extends MIDlet implements CommandListener {
         display.setCurrent(map);
     }
 
+    /**
+     * True while the map is on screen. A background result (search results, a detail, an alert)
+     * replaces the screen only then: the user may have opened Settings or the log meanwhile, and
+     * those must stay put.
+     */
+    boolean mapOnTop() {
+        Displayable c = display.getCurrent();
+        return c == map || c == null || map.isShown();
+    }
+
+    /** Shows a background result if the map is still on screen; otherwise just says it's ready. */
+    void showResult(Displayable d, String what) {
+        if (mapOnTop()) display.setCurrent(d);
+        else {
+            Log.add(what + " ready, not shown: another screen is open");
+            map.status = what + " připraven, ale byla otevřená jiná obrazovka";
+        }
+    }
+
     void error(String what, Throwable e) {
         Log.add(what + ": " + e);
+        if (!mapOnTop()) { map.status = what + ": chyba " + e.getMessage(); return; }
         Alert a = new Alert("Chyba", what + ":\n" + e.getMessage(), null, AlertType.ERROR);
         a.setTimeout(Alert.FOREVER);
         display.setCurrent(a, map);
@@ -118,7 +138,7 @@ public class Mapy extends MIDlet implements CommandListener {
                 results.addCommand(SHOW);
                 results.setSelectCommand(SHOW);
                 results.setCommandListener(Mapy.this);
-                display.setCurrent(results);
+                showResult(results, "Výsledek hledání");
             }
         }.go();
     }
@@ -288,6 +308,11 @@ public class Mapy extends MIDlet implements CommandListener {
             }.start();
         }
         f.setCommandListener(this);
+        if (!mapOnTop()) {
+            Log.add("detail " + p.title + " ready, not shown: another screen is open");
+            map.status = "Detail " + p.title + " připraven (Otevřít)";
+            return;
+        }
         detailForm = f;
         display.setCurrent(f);
     }
@@ -397,19 +422,23 @@ public class Mapy extends MIDlet implements CommandListener {
                 Net.Response r = Net.post("http://" + Settings.pc + "/results?name=mapy", "text/plain; charset=utf-8", b, "log na PC");
                 Alert a = new Alert("Log", "Odesláno: HTTP " + r.code + ", " + b.length + " B", null, AlertType.INFO);
                 a.setTimeout(3000);
-                display.setCurrent(a, map);
+                if (mapOnTop()) display.setCurrent(a, map);
             }
         }.go();
     }
 
     TextField fPc, fUa, fBt;
-    ChoiceGroup fPanel, fCache, fPreview;
+    Form settingsForm;
+    static final Command BT_SEARCH = new Command("Hledat GPS zařízení", Command.SCREEN, 2);
+    static final Command BT_DEFAULT = new Command("GPS: výchozí Android", Command.SCREEN, 4);
+    ChoiceGroup fPanel, fCache, fPreview, fFollow;
     static final int[] CACHE_MB = { 0, 4, 8, 16, 32, 48 };
     static final Command CLEAR_CACHE = new Command("Smazat mezipaměť", Command.SCREEN, 3);
     static final int[] PANEL_WIDTHS = { 110, 130, 150, 180, 210, 240 };
 
     void settings() {
         Form f = new Form("Nastavení");
+        settingsForm = f;
         fPc = new TextField("PC pro log (adresa:port)", Settings.pc, 64, TextField.ANY);
         fUa = new TextField("User-Agent", Settings.userAgent, 200, TextField.ANY);
         String[] labels = new String[PANEL_WIDTHS.length];
@@ -433,13 +462,19 @@ public class Mapy extends MIDlet implements CommandListener {
         fPreview = new ChoiceGroup("Náhled při najetí kurzorem (fotka, hodnocení)", Choice.POPUP, new String[] { "zapnuto", "vypnuto" }, null);
         fPreview.setSelectedIndex(Settings.preview ? 0 : 1, true);
         f.append(fPreview);
-        fBt = new TextField("Bluetooth GPS: adresa (Android: Nastavení > O telefonu > Stav)", Settings.btAddress, 17, TextField.ANY);
+        fBt = new TextField("Bluetooth GPS: adresa (Menu: Hledat GPS zařízení)", Gps.pretty(Settings.btAddress), 17, TextField.ANY);
         f.append(fBt);
+        String[] fl = { "zapnuto", "vypnuto" };
+        fFollow = new ChoiceGroup("Mapa sleduje polohu GPS", Choice.POPUP, fl, null);
+        fFollow.setSelectedIndex(Settings.follow ? 0 : 1, true);
+        f.append(fFollow);
         f.append(fPc);
         f.append(fUa);
         f.append(new StringItem(null, "Mapa, body zájmu a trasy: © OpenStreetMap contributors (openstreetmap.org/copyright), trasy: OSRM na serveru FOSSGIS (routing.openstreetmap.de). Chyba v mapě? openstreetmap.org/fixthemap. Hledání, detaily, fotky a ikony: Mapy.com."));
         f.addCommand(SAVE);
+        f.addCommand(BT_SEARCH);
         f.addCommand(CLEAR_CACHE);
+        f.addCommand(BT_DEFAULT);
         f.addCommand(BACK);
         f.setCommandListener(this);
         display.setCurrent(f);
@@ -464,12 +499,22 @@ public class Mapy extends MIDlet implements CommandListener {
             else if (c == ROUTE_CAR) planRoute(detailPlace, true);
             else if (c == photosCommand) display.setCurrent(new PhotoCanvas(this, detailForm, detailPlace.title, detailPhotos));
             else showMap();
+        } else if (c == BT_SEARCH) {
+            new BtSearch(display, settingsForm, new BtSearch.Picked() {
+                public void picked(String a) { fBt.setString(Gps.pretty(a)); }
+            }).start();
+        } else if (c == BT_DEFAULT) {
+            fBt.setString(Gps.pretty(Settings.DEFAULT_BT));
         } else if (c == SAVE) {
             Settings.pc = fPc.getString().trim();
             String ua = fUa.getString().trim();
             Settings.userAgent = ua.length() > 0 ? ua : Settings.DEFAULT_UA;
             Settings.panelWidth = PANEL_WIDTHS[fPanel.getSelectedIndex()];
-            Settings.btAddress = Gps.clean(fBt.getString());
+            String bt = Gps.clean(fBt.getString());
+            if (!bt.equals(Settings.btAddress) && Gps.instance.running) Gps.instance.disconnect();
+            Settings.btAddress = bt.length() == 12 ? bt : Settings.DEFAULT_BT;
+            Settings.follow = fFollow.getSelectedIndex() == 0;
+            map.follow = Settings.follow;
             Settings.cacheMB = CACHE_MB[fCache.getSelectedIndex()];
             Settings.preview = fPreview.getSelectedIndex() == 0;
             Settings.save();
