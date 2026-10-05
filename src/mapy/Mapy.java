@@ -234,7 +234,7 @@ public class Mapy extends MIDlet implements CommandListener {
                     String rating = d == null ? "" : rating(d);
                     map.setPreview(p, null, rating);
                     String u = d == null ? null : Photos.header(d);
-                    if (u != null) map.setPreview(p, Photos.load(Photos.sized(u, 80), "náhled"), rating);
+                    if (u != null) map.setPreview(p, Photos.load(u, 80, "náhled"), rating);
                 } catch (Throwable e) {
                     Log.add("preview " + p.title + ": " + e);
                 } finally {
@@ -305,7 +305,7 @@ public class Mapy extends MIDlet implements CommandListener {
             new Thread() {
                 public void run() {
                     try {
-                        Image im = Photos.load(Photos.sized(header, 120), "foto detailu");
+                        Image im = Photos.load(header, 120, "foto detailu");
                         ImageItem it = new ImageItem(null, im, Item.LAYOUT_CENTER | Item.LAYOUT_NEWLINE_AFTER, "foto");
                         if (f.size() > 0) f.insert(0, it); else f.append(it);
                     } catch (Throwable e) {

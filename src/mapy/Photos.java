@@ -11,6 +11,39 @@ import javax.microedition.lcdui.*;
 public class Photos {
     static final Lru images = new Lru(12);       // url -> decoded Image (memory)
 
+    /**
+     * Seznam's image server only serves the sizes the Mapy.com app asks for: "res,,800,3" and
+     * "res,,200,3" work, any other size (120, 80...) is HTTP 400. So we always download the 200 px
+     * version (tens of KB) and scale it down on the phone.
+     */
+    static final int SERVER_H = 200;
+
+    /** Downloads the photo at the server's 200 px size and scales it to about h pixels high. */
+    public static Image load(String url, int h, String label) throws Exception {
+        String key = url + "#" + h;
+        Image im = (Image) images.get(key);
+        if (im != null) return im;
+        im = load(sized(url, SERVER_H), label);
+        if (h < im.getHeight()) {
+            im = scale(im, im.getWidth() * h / im.getHeight(), h);
+            images.put(key, im);
+        }
+        return im;
+    }
+
+    /** Nearest-neighbour scaling (MIDP 2.0 has none of its own). */
+    static Image scale(Image src, int w, int h) {
+        int sw = src.getWidth(), sh = src.getHeight();
+        if (w < 1) w = 1;
+        int[] in = new int[sw];
+        int[] out = new int[w * h];
+        for (int y = 0; y < h; y++) {
+            src.getRGB(in, 0, sw, 0, y * sh / h, sw, 1);
+            for (int x = 0; x < w; x++) out[y * w + x] = in[x * sw / w];
+        }
+        return Image.createRGBImage(out, w, h, false);
+    }
+
     /** The same photo at about h pixels (Seznam image servers and panorama previews). */
     public static String sized(String url, int h) {
         int i = url.indexOf("fl=res,");

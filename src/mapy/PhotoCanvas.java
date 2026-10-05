@@ -38,7 +38,7 @@ public class PhotoCanvas extends Canvas implements CommandListener, Runnable {
     public void run() {
         try {
             int h = getHeight() - 20;
-            image = Photos.load(Photos.sized((String) urls.elementAt(index), h), "fotka " + (index + 1));
+            image = Photos.load((String) urls.elementAt(index), h, "fotka " + (index + 1));
             status = "";
         } catch (Throwable e) {
             status = "Fotku se nepodařilo načíst: " + e.getMessage();
