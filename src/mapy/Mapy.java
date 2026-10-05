@@ -482,7 +482,6 @@ public class Mapy extends MIDlet implements CommandListener {
         }.go();
     }
 
-    TextField fPc, fUa, fBt, fKey;
     List layerList;
     int[] layerIds;
 
@@ -501,93 +500,8 @@ public class Mapy extends MIDlet implements CommandListener {
         layerList.setCommandListener(this);
         display.setCurrent(layerList);
     }
-    Form settingsForm;
-    static final Command BT_SEARCH = new Command("Hledat GPS zařízení", Command.SCREEN, 2);
-    static final Command DISCARD = new Command("Neukládat", Command.SCREEN, 2);
-    static final Command STAY = new Command("Zpět do nastavení", Command.BACK, 3);
-    String savedState;
-    Alert unsaved;
-
-    /** The settings form's values as one string, to see whether anything changed. */
-    String formState() {
-        return fPc.getString() + "|" + fUa.getString() + "|" + fKey.getString() + "|" + fBt.getString() + "|" + fPanel.getSelectedIndex() + fCache.getSelectedIndex()
-            + fPreview.getSelectedIndex() + fFollow.getSelectedIndex() + fLimits.getSelectedIndex() + fAkce.getSelectedIndex() + fHttp.getSelectedIndex() + fGpsAuto.getSelectedIndex();
-    }
-
-    /** Leaving Settings: with changes, ask whether to save them. */
-    void leaveSettings() {
-        if (formState().equals(savedState)) { showMap(); return; }
-        unsaved = new Alert("Neuložené změny", "Nastavení se změnilo. Uložit změny?", null, AlertType.CONFIRMATION);
-        unsaved.setTimeout(Alert.FOREVER);
-        unsaved.addCommand(SAVE);
-        unsaved.addCommand(DISCARD);
-        unsaved.addCommand(STAY);
-        unsaved.setCommandListener(this);
-        display.setCurrent(unsaved);
-    }
-    ChoiceGroup fPanel, fCache, fPreview, fFollow, fLimits, fAkce, fHttp, fGpsAuto;
-    static final int[] CACHE_MB = { 0, 4, 8, 16, 32, 48 };
-    static final Command CLEAR_CACHE = new Command("Smazat mezipaměť", Command.SCREEN, 3);
-    static final int[] PANEL_WIDTHS = { 110, 130, 150, 180, 210, 240 };
-
     void settings() {
-        Form f = new Form("Nastavení");
-        settingsForm = f;
-        fPc = new TextField("PC pro log (adresa:port)", Settings.pc, 64, TextField.ANY);
-        fUa = new TextField("User-Agent", Settings.userAgent, 200, TextField.ANY);
-        String[] labels = new String[PANEL_WIDTHS.length];
-        int sel = 2;
-        for (int i = 0; i < labels.length; i++) {
-            labels[i] = PANEL_WIDTHS[i] + " px";
-            if (PANEL_WIDTHS[i] == Settings.panelWidth) sel = i;
-        }
-        fPanel = new ChoiceGroup("Šířka levého panelu", Choice.EXCLUSIVE, labels, null);
-        fPanel.setSelectedIndex(sel, true);
-        f.append(fPanel);
-        String[] cl = new String[CACHE_MB.length];
-        int cs = 3;
-        for (int i = 0; i < cl.length; i++) {
-            cl[i] = CACHE_MB[i] == 0 ? "vypnuto" : CACHE_MB[i] + " MB";
-            if (CACHE_MB[i] == Settings.cacheMB) cs = i;
-        }
-        fCache = new ChoiceGroup("Mezipaměť dlaždic a fotek v telefonu (" + DiskCache.summary() + ")", Choice.EXCLUSIVE, cl, null);
-        fCache.setSelectedIndex(cs, true);
-        f.append(fCache);
-        fPreview = new ChoiceGroup("Náhled při najetí kurzorem (fotka, hodnocení)", Choice.EXCLUSIVE, new String[] { "zapnuto", "vypnuto" }, null);
-        fPreview.setSelectedIndex(Settings.preview ? 0 : 1, true);
-        f.append(fPreview);
-        fBt = new TextField("Bluetooth GPS: adresa (boční tlačítko Hledat GPS zařízení; prázdné = Android)", Gps.pretty(Settings.btAddress), 17, TextField.ANY);
-        f.append(fBt);
-        String[] fl = { "zapnuto", "vypnuto" };
-        fFollow = new ChoiceGroup("Mapa sleduje polohu GPS", Choice.EXCLUSIVE, fl, null);
-        fFollow.setSelectedIndex(Settings.follow ? 0 : 1, true);
-        f.append(fFollow);
-        fGpsAuto = new ChoiceGroup("Připojit GPS při spuštění", Choice.EXCLUSIVE, fl, null);
-        fGpsAuto.setSelectedIndex(Settings.gpsAuto ? 0 : 1, true);
-        f.append(fGpsAuto);
-        fLimits = new ChoiceGroup("Rychlostní limity (OSM) při jízdě", Choice.EXCLUSIVE, fl, null);
-        fLimits.setSelectedIndex(Settings.speedLimits ? 0 : 1, true);
-        f.append(fLimits);
-        fAkce = new ChoiceGroup("Menu Akce telefonu (klávesa Menu) a popisky bočních tlačítek", Choice.EXCLUSIVE,
-            new String[] { "vypnuto: menu mapy je Tab / 4. boční tlačítko", "zapnuto (šipky v něm hýbou mapou)" }, null);
-        fAkce.setSelectedIndex(Settings.akce ? 1 : 0, true);
-        f.append(fAkce);
-        fHttp = new ChoiceGroup("Veřejná data (mapa, trasy, body zájmu, fotky) přes HTTP, když to server dovolí (rychlejší, nešifrované)", Choice.EXCLUSIVE, fl, null);
-        fHttp.setSelectedIndex(Settings.httpFirst ? 0 : 1, true);
-        f.append(fHttp);
-        fKey = new TextField("Mapy.com API klíč (vlastní, zdarma na developer.mapy.com; pro mapy Mapy.com)", Settings.mapyKey, 100, TextField.ANY);
-        f.append(fKey);
-        f.append(fPc);
-        f.append(fUa);
-        f.append(new StringItem(null, "Mapa, body zájmu a trasy: © OpenStreetMap contributors (openstreetmap.org/copyright), trasy: OSRM na serveru FOSSGIS (routing.openstreetmap.de). Chyba v mapě? openstreetmap.org/fixthemap. Hledání, detaily, fotky a ikony: Mapy.com."));
-        // exactly four commands, so all of them sit on the 9300's side buttons (none hidden in Akce)
-        f.addCommand(SAVE);
-        f.addCommand(BT_SEARCH);
-        f.addCommand(CLEAR_CACHE);
-        f.addCommand(BACK);
-        savedState = formState();
-        f.setCommandListener(this);
-        display.setCurrent(f);
+        new SettingsScreen(this).show();
     }
 
     public void commandAction(Command c, Displayable d) {
@@ -627,45 +541,6 @@ public class Mapy extends MIDlet implements CommandListener {
             else if (c == ROUTE_CAR) planRoute(detailPlace, true);
             else if (c == photosCommand) display.setCurrent(new PhotoCanvas(this, detailForm, detailPlace.title, detailPhotos));
             else showMap();
-        } else if (c == BT_SEARCH) {
-            new BtSearch(display, settingsForm, new BtSearch.Picked() {
-                public void picked(String a) { fBt.setString(Gps.pretty(a)); }
-            }).start();
-        } else if (d == unsaved && c == DISCARD) {
-            showMap();
-        } else if (d == unsaved && c == STAY) {
-            display.setCurrent(settingsForm);
-        } else if (d == settingsForm && c == BACK) {
-            leaveSettings();
-        } else if (c == SAVE) {
-            Settings.pc = fPc.getString().trim();
-            String ua = fUa.getString().trim();
-            Settings.userAgent = ua.length() > 0 ? ua : Settings.DEFAULT_UA;
-            Settings.panelWidth = PANEL_WIDTHS[fPanel.getSelectedIndex()];
-            String bt = Gps.clean(fBt.getString());
-            if (!bt.equals(Settings.btAddress) && Gps.instance.running) Gps.instance.disconnect();
-            Settings.btAddress = bt.length() == 12 ? bt : Settings.DEFAULT_BT;
-            Settings.follow = fFollow.getSelectedIndex() == 0;
-            Settings.speedLimits = fLimits.getSelectedIndex() == 0;
-            Settings.httpFirst = fHttp.getSelectedIndex() == 0;
-            Settings.gpsAuto = fGpsAuto.getSelectedIndex() == 0;
-            String key = fKey.getString().trim();
-            if (!key.equals(Settings.mapyKey)) { Settings.mapyKey = key; map.layerChanged(); }
-            Settings.akce = fAkce.getSelectedIndex() == 1;
-            map.applyCommands();
-            map.follow = Settings.follow;
-            Settings.cacheMB = CACHE_MB[fCache.getSelectedIndex()];
-            Settings.preview = fPreview.getSelectedIndex() == 0;
-            Settings.save();
-            map.repaint();
-            showMap();
-        } else if (c == CLEAR_CACHE) {
-            DiskCache.clear();
-            Photos.images.clear();
-            details.clear();
-            Alert a = new Alert("Mezipaměť", "Smazáno.", null, AlertType.INFO);
-            a.setTimeout(2000);
-            display.setCurrent(a, settingsForm != null && d == settingsForm ? (Displayable) settingsForm : map);
         } else if (c == SEND) {
             sendLog();
         } else {

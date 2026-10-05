@@ -36,8 +36,8 @@ public class Layers {
         "© Seznam.cz|© OpenStreetMap",
     };
     /** Deepest zoom each server has its own tiles for; the app zooms to MAX, enlarging beyond. */
-    static final int[] NATIVE_ZOOM = { 19, 17, 18, 19, 18, 18 };
-    public static final int MAX = 19;
+    static final int[] NATIVE_ZOOM = { 19, 17, 19, 20, 18, 18 };
+    public static final int MAX = 20;
 
     public static int current() {
         int l = Settings.layer;
