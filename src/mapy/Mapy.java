@@ -481,7 +481,28 @@ public class Mapy extends MIDlet implements CommandListener {
     TextField fPc, fUa, fBt;
     Form settingsForm;
     static final Command BT_SEARCH = new Command("Hledat GPS zařízení", Command.SCREEN, 2);
-    static final Command BT_DEFAULT = new Command("GPS: výchozí Android", Command.SCREEN, 4);
+    static final Command DISCARD = new Command("Neukládat", Command.SCREEN, 2);
+    static final Command STAY = new Command("Zpět do nastavení", Command.BACK, 3);
+    String savedState;
+    Alert unsaved;
+
+    /** The settings form's values as one string, to see whether anything changed. */
+    String formState() {
+        return fPc.getString() + "|" + fUa.getString() + "|" + fBt.getString() + "|" + fPanel.getSelectedIndex() + fCache.getSelectedIndex()
+            + fPreview.getSelectedIndex() + fFollow.getSelectedIndex() + fLimits.getSelectedIndex() + fAkce.getSelectedIndex();
+    }
+
+    /** Leaving Settings: with changes, ask whether to save them. */
+    void leaveSettings() {
+        if (formState().equals(savedState)) { showMap(); return; }
+        unsaved = new Alert("Neuložené změny", "Nastavení se změnilo. Uložit změny?", null, AlertType.CONFIRMATION);
+        unsaved.setTimeout(Alert.FOREVER);
+        unsaved.addCommand(SAVE);
+        unsaved.addCommand(DISCARD);
+        unsaved.addCommand(STAY);
+        unsaved.setCommandListener(this);
+        display.setCurrent(unsaved);
+    }
     ChoiceGroup fPanel, fCache, fPreview, fFollow, fLimits, fAkce;
     static final int[] CACHE_MB = { 0, 4, 8, 16, 32, 48 };
     static final Command CLEAR_CACHE = new Command("Smazat mezipaměť", Command.SCREEN, 3);
@@ -513,7 +534,7 @@ public class Mapy extends MIDlet implements CommandListener {
         fPreview = new ChoiceGroup("Náhled při najetí kurzorem (fotka, hodnocení)", Choice.EXCLUSIVE, new String[] { "zapnuto", "vypnuto" }, null);
         fPreview.setSelectedIndex(Settings.preview ? 0 : 1, true);
         f.append(fPreview);
-        fBt = new TextField("Bluetooth GPS: adresa (Menu: Hledat GPS zařízení)", Gps.pretty(Settings.btAddress), 17, TextField.ANY);
+        fBt = new TextField("Bluetooth GPS: adresa (boční tlačítko Hledat GPS zařízení; prázdné = Android)", Gps.pretty(Settings.btAddress), 17, TextField.ANY);
         f.append(fBt);
         String[] fl = { "zapnuto", "vypnuto" };
         fFollow = new ChoiceGroup("Mapa sleduje polohu GPS", Choice.EXCLUSIVE, fl, null);
@@ -529,11 +550,12 @@ public class Mapy extends MIDlet implements CommandListener {
         f.append(fPc);
         f.append(fUa);
         f.append(new StringItem(null, "Mapa, body zájmu a trasy: © OpenStreetMap contributors (openstreetmap.org/copyright), trasy: OSRM na serveru FOSSGIS (routing.openstreetmap.de). Chyba v mapě? openstreetmap.org/fixthemap. Hledání, detaily, fotky a ikony: Mapy.com."));
+        // exactly four commands, so all of them sit on the 9300's side buttons (none hidden in Akce)
         f.addCommand(SAVE);
         f.addCommand(BT_SEARCH);
         f.addCommand(CLEAR_CACHE);
-        f.addCommand(BT_DEFAULT);
         f.addCommand(BACK);
+        savedState = formState();
         f.setCommandListener(this);
         display.setCurrent(f);
     }
@@ -561,8 +583,12 @@ public class Mapy extends MIDlet implements CommandListener {
             new BtSearch(display, settingsForm, new BtSearch.Picked() {
                 public void picked(String a) { fBt.setString(Gps.pretty(a)); }
             }).start();
-        } else if (c == BT_DEFAULT) {
-            fBt.setString(Gps.pretty(Settings.DEFAULT_BT));
+        } else if (d == unsaved && c == DISCARD) {
+            showMap();
+        } else if (d == unsaved && c == STAY) {
+            display.setCurrent(settingsForm);
+        } else if (d == settingsForm && c == BACK) {
+            leaveSettings();
         } else if (c == SAVE) {
             Settings.pc = fPc.getString().trim();
             String ua = fUa.getString().trim();
@@ -587,7 +613,7 @@ public class Mapy extends MIDlet implements CommandListener {
             details.clear();
             Alert a = new Alert("Mezipaměť", "Smazáno.", null, AlertType.INFO);
             a.setTimeout(2000);
-            display.setCurrent(a, map);
+            display.setCurrent(a, settingsForm != null && d == settingsForm ? (Displayable) settingsForm : map);
         } else if (c == SEND) {
             sendLog();
         } else {

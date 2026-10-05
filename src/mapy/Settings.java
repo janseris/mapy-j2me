@@ -6,7 +6,7 @@ import javax.microedition.rms.*;
 /** Settings and the last map view, in RMS. */
 public class Settings {
     /** OSM's tile policy wants a User-Agent naming the app; we use our own everywhere. */
-    public static final String DEFAULT_UA = "Mapy9300/1.7 (+https://github.com/janseris/mapy-j2me)";
+    public static final String DEFAULT_UA = "Mapy9300/1.8 (+https://github.com/janseris/mapy-j2me)";
 
     public static String pc = "192.168.137.1:8000";
     public static String userAgent = DEFAULT_UA;
