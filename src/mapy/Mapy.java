@@ -38,6 +38,10 @@ public class Mapy extends MIDlet implements CommandListener {
         map = new MapCanvas(this);
         SpeedLimit.instance.start();
         display.setCurrent(map);
+        if (Settings.gpsAuto) {
+            Log.add("GPS on at start");
+            Gps.instance.connect();     // gives up by itself (status "nepřipojeno") when the phone isn't there
+        }
     }
 
     protected void pauseApp() {}
@@ -507,7 +511,7 @@ public class Mapy extends MIDlet implements CommandListener {
     /** The settings form's values as one string, to see whether anything changed. */
     String formState() {
         return fPc.getString() + "|" + fUa.getString() + "|" + fKey.getString() + "|" + fBt.getString() + "|" + fPanel.getSelectedIndex() + fCache.getSelectedIndex()
-            + fPreview.getSelectedIndex() + fFollow.getSelectedIndex() + fLimits.getSelectedIndex() + fAkce.getSelectedIndex() + fHttp.getSelectedIndex();
+            + fPreview.getSelectedIndex() + fFollow.getSelectedIndex() + fLimits.getSelectedIndex() + fAkce.getSelectedIndex() + fHttp.getSelectedIndex() + fGpsAuto.getSelectedIndex();
     }
 
     /** Leaving Settings: with changes, ask whether to save them. */
@@ -521,7 +525,7 @@ public class Mapy extends MIDlet implements CommandListener {
         unsaved.setCommandListener(this);
         display.setCurrent(unsaved);
     }
-    ChoiceGroup fPanel, fCache, fPreview, fFollow, fLimits, fAkce, fHttp;
+    ChoiceGroup fPanel, fCache, fPreview, fFollow, fLimits, fAkce, fHttp, fGpsAuto;
     static final int[] CACHE_MB = { 0, 4, 8, 16, 32, 48 };
     static final Command CLEAR_CACHE = new Command("Smazat mezipaměť", Command.SCREEN, 3);
     static final int[] PANEL_WIDTHS = { 110, 130, 150, 180, 210, 240 };
@@ -558,6 +562,9 @@ public class Mapy extends MIDlet implements CommandListener {
         fFollow = new ChoiceGroup("Mapa sleduje polohu GPS", Choice.EXCLUSIVE, fl, null);
         fFollow.setSelectedIndex(Settings.follow ? 0 : 1, true);
         f.append(fFollow);
+        fGpsAuto = new ChoiceGroup("Připojit GPS při spuštění", Choice.EXCLUSIVE, fl, null);
+        fGpsAuto.setSelectedIndex(Settings.gpsAuto ? 0 : 1, true);
+        f.append(fGpsAuto);
         fLimits = new ChoiceGroup("Rychlostní limity (OSM) při jízdě", Choice.EXCLUSIVE, fl, null);
         fLimits.setSelectedIndex(Settings.speedLimits ? 0 : 1, true);
         f.append(fLimits);
@@ -641,6 +648,7 @@ public class Mapy extends MIDlet implements CommandListener {
             Settings.follow = fFollow.getSelectedIndex() == 0;
             Settings.speedLimits = fLimits.getSelectedIndex() == 0;
             Settings.httpFirst = fHttp.getSelectedIndex() == 0;
+            Settings.gpsAuto = fGpsAuto.getSelectedIndex() == 0;
             String key = fKey.getString().trim();
             if (!key.equals(Settings.mapyKey)) { Settings.mapyKey = key; map.layerChanged(); }
             Settings.akce = fAkce.getSelectedIndex() == 1;

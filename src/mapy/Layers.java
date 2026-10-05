@@ -35,7 +35,9 @@ public class Layers {
         "© Seznam.cz|© OpenStreetMap",
         "© Seznam.cz|© OpenStreetMap",
     };
-    static final int[] MAX_ZOOM = { 18, 17, 18, 18, 18, 18 };
+    /** Deepest zoom each server has its own tiles for; the app zooms to MAX, enlarging beyond. */
+    static final int[] NATIVE_ZOOM = { 19, 17, 18, 19, 18, 18 };
+    public static final int MAX = 19;
 
     public static int current() {
         int l = Settings.layer;
@@ -59,7 +61,9 @@ public class Layers {
         return line == 0 ? c.substring(0, i) : c.substring(i + 1);
     }
 
-    public static int maxZoom() { return MAX_ZOOM[current()]; }
+    public static int maxZoom() { return MAX; }
+
+    public static int nativeZoom() { return NATIVE_ZOOM[current()]; }
 
     static String put(String s, String a, String b) {
         int i = s.indexOf(a);

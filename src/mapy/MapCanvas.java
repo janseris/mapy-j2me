@@ -181,6 +181,9 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         }
     }
 
+    String parentKey;
+    Image parentImage;
+
     static String key(int z, int x, int y) { return Layers.current() + ":" + z + "/" + x + "/" + y; }
 
     /** Loads one missing visible tile, nearest to the centre first. False when none is missing. */
@@ -207,18 +210,31 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         status = "Mapa: zbývá " + missing;
         repaintPanel();
         try {
-            String url = Layers.url(z, tx, by);
-            byte[] body = DiskCache.get(url);         // phone storage first, then the network
-            if (body == null) {
-                Net.Response r = Net.get(url, "dlaždice " + k);
-                if (r.code == 200) DiskCache.put(url, r.body);
-                else Log.add("tile " + k + ": HTTP " + r.code);
-                body = r.code == 200 ? r.body : null;
+            // past the map type's own detail, the tile is cut out of its deepest tile and enlarged
+            int nz = Math.min(z, Layers.nativeZoom()), d = z - nz;
+            int px = tx >> d, py = by >> d;
+            String pk = key(nz, px, py);
+            Image src = d > 0 && pk.equals(parentKey) ? parentImage : null;
+            if (src == null) {
+                String url = Layers.url(nz, px, py);
+                byte[] body = DiskCache.get(url);         // phone storage first, then the network
+                if (body == null) {
+                    Net.Response r = Net.get(url, "dlaždice " + k);
+                    if (r.code == 200) DiskCache.put(url, r.body);
+                    else Log.add("tile " + pk + ": HTTP " + r.code);
+                    body = r.code == 200 ? r.body : null;
+                }
+                if (body != null) src = Image.createImage(body, 0, body.length);
+                if (d > 0) { parentKey = pk; parentImage = src; }
             }
-            if (body == null) {
+            if (src == null) {
                 failed.put(k, Boolean.TRUE);
             } else {
-                Image im = Image.createImage(body, 0, body.length);
+                Image im = src;
+                if (d > 0) {
+                    int part = T >> d, ox = (tx - (px << d)) * part, oy = (by - (py << d)) * part;
+                    im = Photos.scale(Image.createImage(src, ox, oy, part, part, 0), T, T);
+                }
                 synchronized (tiles) {
                     tiles.put(k, im);
                     tileOrder.addElement(k);
@@ -354,6 +370,20 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     }
 
     /** Another map type: drop the tiles in memory (the disk cache keeps each type by its URL). */
+    /** The next map type (skips Mapy.com without a key). */
+    void nextLayer() {
+        int l = Layers.current();
+        for (int i = 1; i <= Layers.NAMES.length; i++) {
+            int n = (l + i) % Layers.NAMES.length;
+            if (Layers.needsKey(n) && Settings.mapyKey.length() == 0) continue;
+            Settings.layer = n;
+            break;
+        }
+        Settings.save();
+        Log.add("map type " + Layers.NAMES[Layers.current()]);
+        layerChanged();
+    }
+
     void layerChanged() {
         synchronized (tiles) { tiles.clear(); tileOrder.removeAllElements(); }
         failed.clear();
@@ -561,6 +591,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (key == 27) { undoMenuArrows(); return; }
         if (key == 9) { openMenu(); return; }                   // Tab
         if (key == 'n' || key == 'N' || key == ' ') { next(); return; }
+        if (key == '5' || key == '.') { commandAction(MYPOS, this); return; }     // my position
+        if (key == '9' || key == ',') { nextLayer(); return; }                    // next map type
         if (key == 10 || key == 13 || a == FIRE) {
             enterDown = true;           // clicks on release, see below
             enterAt = System.currentTimeMillis();
@@ -692,7 +724,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (c == NAV) return "Navigace";
         if (c == POIS) return "Body zájmu";
         if (c == FULL) return "Celá obrazovka";
-        if (c == MYPOS) return "Moje poloha";
+        if (c == MYPOS) return "Moje poloha  (5 / .)";
+        if (c == LAYER) return "Typ mapy  (9 / ,)";
         return c.getLabel();
     }
 
@@ -1377,7 +1410,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             g.setColor(0x80848E);
             String help = Settings.pois && zoom < POI_ZOOM
                 ? "Body zájmu od přiblížení " + POI_ZOOM + ". Enter = co je tady."
-                : "Najeď kurzorem na bod, Enter = otevřít. N = další bod. Menu: Tab." + (Settings.akce ? " (nebo 4. boční tlačítko)" : "");
+                : "Najeď kurzorem na bod, Enter = otevřít. N = další bod. 5 = moje poloha, 9 = typ mapy. Menu: Tab." + (Settings.akce ? " (nebo 4. boční tlačítko)" : "");
             y = wrap(g, f, help, 3, y, tw, 4);
         }
         // bottom: last key (for finding Chr+arrow codes), zoom, credits
@@ -1386,7 +1419,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         g.setColor(0x80848E);
         if (lastKey.length() > 0 && by - fh > y) g.drawString(clip(f, lastKey, tw), 3, by - fh, Graphics.TOP | Graphics.LEFT);
         g.setColor(0xB5BAC1);
-        g.drawString("Zoom " + zoom, 3, by, Graphics.TOP | Graphics.LEFT);
+        g.drawString("Zoom " + zoom + (zoom > Layers.nativeZoom() ? " (zvětšeno)" : ""), 3, by, Graphics.TOP | Graphics.LEFT);
         g.drawString(Layers.credit(0), 3, by + fh, Graphics.TOP | Graphics.LEFT);
         if (creditLines > 1) g.drawString(Layers.credit(1), 3, by + 2 * fh, Graphics.TOP | Graphics.LEFT);
     }
