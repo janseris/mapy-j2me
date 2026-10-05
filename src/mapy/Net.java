@@ -47,7 +47,9 @@ public class Net {
      * Plain HTTP where the server allows it: a request without TLS skips the TCP + TLS handshake
      * cost the phone pays on every HTTPS connection. Public data only (tiles, routes, POIs,
      * photos), never a URL with a key. Per host: the first GET tries http://; a redirect or an
-     * error marks the host HTTPS-only for this run.
+     * error marks the host HTTPS-only for this run. Measured from a PC (2026-10): plain HTTP works
+     * for tile.opentopomap.org, ags.cuzk.gov.cz, overpass-api.de and routing.openstreetmap.de;
+     * tile.openstreetmap.org and Seznam's *.sdn.cz photos redirect to HTTPS.
      */
     static final java.util.Hashtable hostMode = new java.util.Hashtable();   // host -> "http" / "https"
 
@@ -59,6 +61,8 @@ public class Net {
     public static Response get(String url, String label) throws IOException {
         if (Settings.httpFirst && url.startsWith("https://") && url.indexOf("apikey") < 0) {
             String h = host(url);
+            // measured 2026-10: these redirect http:// to https://, no point asking
+            if (h.equals("tile.openstreetmap.org") || h.endsWith(".sdn.cz")) hostMode.put(h, "https");
             Object m = hostMode.get(h);
             if (!"https".equals(m)) {
                 String plain = "http://" + url.substring(8);
