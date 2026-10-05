@@ -6,7 +6,7 @@ import javax.microedition.rms.*;
 /** Settings and the last map view, in RMS. */
 public class Settings {
     /** OSM's tile policy wants a User-Agent naming the app; we use our own everywhere. */
-    public static final String DEFAULT_UA = "Mapy9300/4.2 (J2ME map app; Nokia 9300; SymbianOS/7.0s Series80/2.0; Profile/MIDP-2.0 Configuration/CLDC-1.1)";
+    public static final String DEFAULT_UA = "Mapy9300/4.3 (J2ME map app; Nokia 9300; SymbianOS/7.0s Series80/2.0; Profile/MIDP-2.0 Configuration/CLDC-1.1)";
 
     public static String pc = "192.168.137.1:8000";
     public static String userAgent = DEFAULT_UA;
@@ -34,6 +34,8 @@ public class Settings {
     public static boolean httpFirst = true;
     /** Connect the Bluetooth GPS when the app starts (it turns itself off if the phone isn't there). */
     public static boolean gpsAuto = true;
+    /** Internet connection: 0 automatic, 1 USB from a PC (IP passthrough), 2 GPRS. See Net.usbLink. */
+    public static int link = 0;
     public static boolean pois = true;
     public static double lat = 50.0875, lon = 14.4213;   // Praha
     public static int zoom = 15;
@@ -71,6 +73,7 @@ public class Settings {
                     mapyKey = in.readUTF();
                     httpFirst = in.readBoolean();
                     gpsAuto = in.readBoolean();
+                    link = in.readInt();
                 } catch (EOFException e) {}
             }
             rs.closeRecordStore();
@@ -106,6 +109,7 @@ public class Settings {
             o.writeUTF(mapyKey);
             o.writeBoolean(httpFirst);
             o.writeBoolean(gpsAuto);
+            o.writeInt(link);
             byte[] b = bo.toByteArray();
             RecordStore rs = RecordStore.openRecordStore("mapy", true);
             if (rs.getNumRecords() == 0) rs.addRecord(b, 0, b.length);

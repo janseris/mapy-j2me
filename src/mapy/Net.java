@@ -20,6 +20,29 @@ public class Net {
      */
     public static final int PAUSE_MS = 50;
 
+    /**
+     * The pause is for internet over USB from a PC (IP passthrough: the PC's keep-alive must get
+     * through); on GPRS it's not needed. Settings.link: 0 automatic, 1 USB, 2 GPRS. Automatic asks
+     * Nokia's "com.nokia.network.access" property ("pd" = packet data / GPRS) when the phone has it;
+     * without an answer it pauses, to be safe.
+     */
+    public static boolean usbLink() {
+        if (Settings.link == 1) return true;
+        if (Settings.link == 2) return false;
+        return !"pd".equals(access());
+    }
+
+    static String access;
+
+    static String access() {
+        if (access == null) {
+            try { access = System.getProperty("com.nokia.network.access"); } catch (Throwable e) {}
+            if (access == null) access = "";
+            Log.add("network access property: '" + access + "'");
+        }
+        return access;
+    }
+
     public static class Response {
         public int code;
         public String type = "";
@@ -187,7 +210,7 @@ public class Net {
             phase = "";
             bytes = 0;
             notifyListener();
-            try { Thread.sleep(PAUSE_MS); } catch (InterruptedException e) {}
+            if (usbLink()) { try { Thread.sleep(PAUSE_MS); } catch (InterruptedException e) {} }
             release();
         }
     }

@@ -24,10 +24,10 @@ public class SettingsScreen implements CommandListener {
 
     // rows
     static final int PANEL = 0, CACHE = 1, PREVIEW = 2, BT = 3, GPS_AUTO = 4, FOLLOW = 5, LIMITS = 6, HTTP = 7,
-        AKCE = 8, KEY = 9, PC = 10, UA = 11, ABOUT = 12, ROWS = 13;
+        AKCE = 8, KEY = 9, PC = 10, UA = 11, LINK = 12, ABOUT = 13, ROWS = 14;
     static final String[] NAMES = { "Šířka levého panelu", "Mezipaměť v telefonu", "Náhled při najetí kurzorem",
         "Bluetooth GPS (adresa)", "Připojit GPS při spuštění", "Mapa sleduje polohu", "Rychlostní limity při jízdě",
-        "Veřejná data přes HTTP", "Menu Akce telefonu", "Mapy.com API klíč", "PC pro log", "User-Agent", "Zdroje dat a licence" };
+        "Veřejná data přes HTTP", "Menu Akce telefonu", "Mapy.com API klíč", "PC pro log", "User-Agent", "Připojení k internetu", "Zdroje dat a licence" };
 
     final Mapy app;
     final Display display;
@@ -50,6 +50,7 @@ public class SettingsScreen implements CommandListener {
         choice[LIMITS] = Settings.speedLimits ? 0 : 1;
         choice[HTTP] = Settings.httpFirst ? 0 : 1;
         choice[AKCE] = Settings.akce ? 0 : 1;
+        choice[LINK] = Settings.link;
         text[BT] = Gps.pretty(Settings.btAddress);
         text[KEY] = Settings.mapyKey;
         text[PC] = Settings.pc;
@@ -75,6 +76,8 @@ public class SettingsScreen implements CommandListener {
             for (int i = 0; i < s.length; i++) s[i] = CACHE_MB[i] == 0 ? "vypnuto" : CACHE_MB[i] + " MB";
             return s;
         }
+        if (r == LINK) return new String[] { "automaticky (" + (Net.usbLink() ? "teď: pauzy" : "teď: bez pauz") + ")",
+            "USB z PC (IP passthrough): krátké pauzy", "GPRS / jiné: bez pauz" };
         if (r == AKCE) return new String[] { "zapnuto (šipky v něm hýbou mapou)", "vypnuto (menu mapy: Tab)" };
         return ON_OFF;
     }
@@ -144,6 +147,7 @@ public class SettingsScreen implements CommandListener {
         Settings.speedLimits = choice[LIMITS] == 0;
         Settings.httpFirst = choice[HTTP] == 0;
         Settings.akce = choice[AKCE] == 0;
+        Settings.link = choice[LINK];
         String key = text[KEY].trim();
         boolean keyChanged = !key.equals(Settings.mapyKey);
         Settings.mapyKey = key;
