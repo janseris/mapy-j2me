@@ -109,31 +109,70 @@ public class Gps implements Runnable, DiscoveryListener {
         }
     }
 
+    // Reading the Bluetooth stream on the 9300 (see probe 1.7-2.1): read(byte[512]) crashed with
+    // E32USER-CBase 40 and single-byte read() with KERN-EXEC 3 under a full NMEA stream. Reading
+    // exactly what available() reports, with the GPS sending only GGA + RMC at 1 Hz, ran stable
+    // (3.5 min on a bus, delay constant, max gap 1.3 s).
+    InputStream src;
+    final byte[] rb = new byte[256];
+    int rpos, rlen, zeroAvail;
+    boolean availBroken;
+
+    int next() throws IOException {
+        while (running) {
+            if (rpos < rlen) return rb[rpos++] & 0xff;
+            if (availBroken) return src.read();
+            int av = src.available();
+            if (av > 0) {
+                int n = src.read(rb, 0, Math.min(av, rb.length));
+                if (n < 0) return -1;
+                rpos = 0;
+                rlen = n;
+                zeroAvail = 0;
+                continue;
+            }
+            if (++zeroAvail > 60) {             // 3 s without data in available(): try a blocking read
+                int c = src.read();
+                if (c >= 0) { availBroken = true; Log.add("gps: available() always 0, single bytes"); }
+                zeroAvail = 0;
+                return c;
+            }
+            try { Thread.sleep(50); } catch (InterruptedException e) {}
+        }
+        return -1;
+    }
+
     void read(InputStream in) throws IOException {
+        src = in;
+        rpos = rlen = zeroAvail = 0;
+        availBroken = false;
         StringBuffer line = new StringBuffer();
         long lastUi = 0;
-        int ch;
-        // single-byte read(): read(byte[]) on a Bluetooth stream crashed the 9300's Java comms thread
-        // (E32USER-CBase 40, seen with probe 1.7)
-        while (running && (ch = in.read()) >= 0) {
-            {
-                if (ch == '\n' || ch == '\r') {
-                    if (line.length() == 0) continue;
-                    if (Nmea.parse(line.toString())) {
-                        lat = Nmea.lat;
-                        lon = Nmea.lon;
-                        speedKmh = Nmea.speedKmh;
-                        course = Nmea.course;
-                        lastFix = System.currentTimeMillis();
-                        if (!fix) { fix = true; status = "poloha OK"; }
-                    }
-                    line.setLength(0);
-                } else if (line.length() < 200) {
-                    line.append((char) ch);
-                }
+        int ch, eofs = 0;
+        while (running) {
+            ch = next();
+            if (ch < 0) {
+                if (++eofs > 50) break;             // 5 s of "end": really ended
+                try { Thread.sleep(100); } catch (InterruptedException e) {}
+                continue;
             }
-            long now = System.currentTimeMillis();
-            if (fix && now - lastUi > 500) { lastUi = now; notifyListener(); }
+            eofs = 0;
+            if (ch == '\n' || ch == '\r') {
+                if (line.length() == 0) continue;
+                if (Nmea.parse(line.toString())) {
+                    lat = Nmea.lat;
+                    lon = Nmea.lon;
+                    speedKmh = Nmea.speedKmh;
+                    course = Nmea.course;
+                    lastFix = System.currentTimeMillis();
+                    if (!fix) { fix = true; status = "poloha OK"; }
+                    long now = System.currentTimeMillis();
+                    if (now - lastUi > 500) { lastUi = now; notifyListener(); }
+                }
+                line.setLength(0);
+            } else if (line.length() < 200) {
+                line.append((char) ch);
+            }
         }
         if (running) setStatus("spojení ukončeno");
     }

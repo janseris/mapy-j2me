@@ -3,7 +3,7 @@
 A map app for the **Nokia 9300 / 9500 Communicator** (Series 80 v2, Symbian 7.0s, J2ME MIDP 2.0),
 inspired by the Mapy.com Android app.
 
-**Demo 0.8:**
+**Demo 0.9:**
 
 - **Map:** OpenStreetMap tiles (`tile.openstreetmap.org`), panning and zoom, up to 24 tiles in memory.
 - **Points of interest overlay** (from zoom 16): restaurants, cafés, pubs, accommodation, parking,
@@ -68,7 +68,7 @@ Up, -1), so zoom is on the side buttons and `+` / `-`.
   another thread) after 15 s without progress, 3 attempts, a short pause after each request so the
   phone keeps answering the PC's USB keep-alive. Progress is shown in the bottom strip, and only that
   strip (or the arriving tile) is repainted while loading.
-- Our own `User-Agent` (`Mapy9300/0.8 (+https://github.com/janseris/mapy-j2me)`), as OSM's tile and
+- Our own `User-Agent` (`Mapy9300/0.9 (+https://github.com/janseris/mapy-j2me)`), as OSM's tile and
   Overpass policies require; tiles only for the visible area, no prefetching.
 - Mapy.com calls: the FastRPC requests captured from the Android app (encoder verified byte for byte
   against the capture), without key or login.
