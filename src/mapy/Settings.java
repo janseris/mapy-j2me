@@ -6,7 +6,7 @@ import javax.microedition.rms.*;
 /** Settings and the last map view, in RMS. */
 public class Settings {
     /** OSM's tile policy wants a User-Agent naming the app; we use our own everywhere. */
-    public static final String DEFAULT_UA = "Mapy9300/1.6 (+https://github.com/janseris/mapy-j2me)";
+    public static final String DEFAULT_UA = "Mapy9300/1.7 (+https://github.com/janseris/mapy-j2me)";
 
     public static String pc = "192.168.137.1:8000";
     public static String userAgent = DEFAULT_UA;
@@ -17,6 +17,11 @@ public class Settings {
     public static boolean follow = true;
     /** Load and show the road's speed limit (OSM) while moving. */
     public static boolean speedLimits = true;
+    /**
+     * The canvas has commands (the phone's Akce menu, side button labels). Off by default: the
+     * Akce menu passes its arrow keys to the map, so the map has no commands and its own menu.
+     */
+    public static boolean akce = false;
     public static boolean pois = true;
     public static double lat = 50.0875, lon = 14.4213;   // Praha
     public static int zoom = 15;
@@ -45,6 +50,7 @@ public class Settings {
                     preview = in.readBoolean();
                     follow = in.readBoolean();
                     speedLimits = in.readBoolean();
+                    akce = in.readBoolean();
                 } catch (EOFException e) {}
             }
             rs.closeRecordStore();
@@ -71,6 +77,7 @@ public class Settings {
             o.writeBoolean(preview);
             o.writeBoolean(follow);
             o.writeBoolean(speedLimits);
+            o.writeBoolean(akce);
             byte[] b = bo.toByteArray();
             RecordStore rs = RecordStore.openRecordStore("mapy", true);
             if (rs.getNumRecords() == 0) rs.addRecord(b, 0, b.length);

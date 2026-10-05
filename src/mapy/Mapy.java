@@ -482,7 +482,7 @@ public class Mapy extends MIDlet implements CommandListener {
     Form settingsForm;
     static final Command BT_SEARCH = new Command("Hledat GPS zařízení", Command.SCREEN, 2);
     static final Command BT_DEFAULT = new Command("GPS: výchozí Android", Command.SCREEN, 4);
-    ChoiceGroup fPanel, fCache, fPreview, fFollow, fLimits;
+    ChoiceGroup fPanel, fCache, fPreview, fFollow, fLimits, fAkce;
     static final int[] CACHE_MB = { 0, 4, 8, 16, 32, 48 };
     static final Command CLEAR_CACHE = new Command("Smazat mezipaměť", Command.SCREEN, 3);
     static final int[] PANEL_WIDTHS = { 110, 130, 150, 180, 210, 240 };
@@ -498,7 +498,7 @@ public class Mapy extends MIDlet implements CommandListener {
             labels[i] = PANEL_WIDTHS[i] + " px";
             if (PANEL_WIDTHS[i] == Settings.panelWidth) sel = i;
         }
-        fPanel = new ChoiceGroup("Šířka levého panelu", Choice.POPUP, labels, null);
+        fPanel = new ChoiceGroup("Šířka levého panelu", Choice.EXCLUSIVE, labels, null);
         fPanel.setSelectedIndex(sel, true);
         f.append(fPanel);
         String[] cl = new String[CACHE_MB.length];
@@ -507,21 +507,25 @@ public class Mapy extends MIDlet implements CommandListener {
             cl[i] = CACHE_MB[i] == 0 ? "vypnuto" : CACHE_MB[i] + " MB";
             if (CACHE_MB[i] == Settings.cacheMB) cs = i;
         }
-        fCache = new ChoiceGroup("Mezipaměť dlaždic a fotek v telefonu (" + DiskCache.summary() + ")", Choice.POPUP, cl, null);
+        fCache = new ChoiceGroup("Mezipaměť dlaždic a fotek v telefonu (" + DiskCache.summary() + ")", Choice.EXCLUSIVE, cl, null);
         fCache.setSelectedIndex(cs, true);
         f.append(fCache);
-        fPreview = new ChoiceGroup("Náhled při najetí kurzorem (fotka, hodnocení)", Choice.POPUP, new String[] { "zapnuto", "vypnuto" }, null);
+        fPreview = new ChoiceGroup("Náhled při najetí kurzorem (fotka, hodnocení)", Choice.EXCLUSIVE, new String[] { "zapnuto", "vypnuto" }, null);
         fPreview.setSelectedIndex(Settings.preview ? 0 : 1, true);
         f.append(fPreview);
         fBt = new TextField("Bluetooth GPS: adresa (Menu: Hledat GPS zařízení)", Gps.pretty(Settings.btAddress), 17, TextField.ANY);
         f.append(fBt);
         String[] fl = { "zapnuto", "vypnuto" };
-        fFollow = new ChoiceGroup("Mapa sleduje polohu GPS", Choice.POPUP, fl, null);
+        fFollow = new ChoiceGroup("Mapa sleduje polohu GPS", Choice.EXCLUSIVE, fl, null);
         fFollow.setSelectedIndex(Settings.follow ? 0 : 1, true);
         f.append(fFollow);
-        fLimits = new ChoiceGroup("Rychlostní limity (OSM) při jízdě", Choice.POPUP, fl, null);
+        fLimits = new ChoiceGroup("Rychlostní limity (OSM) při jízdě", Choice.EXCLUSIVE, fl, null);
         fLimits.setSelectedIndex(Settings.speedLimits ? 0 : 1, true);
         f.append(fLimits);
+        fAkce = new ChoiceGroup("Menu Akce telefonu (klávesa Menu) a popisky bočních tlačítek", Choice.EXCLUSIVE,
+            new String[] { "vypnuto: menu mapy je Tab / 4. boční tlačítko", "zapnuto (šipky v něm hýbou mapou)" }, null);
+        fAkce.setSelectedIndex(Settings.akce ? 1 : 0, true);
+        f.append(fAkce);
         f.append(fPc);
         f.append(fUa);
         f.append(new StringItem(null, "Mapa, body zájmu a trasy: © OpenStreetMap contributors (openstreetmap.org/copyright), trasy: OSRM na serveru FOSSGIS (routing.openstreetmap.de). Chyba v mapě? openstreetmap.org/fixthemap. Hledání, detaily, fotky a ikony: Mapy.com."));
@@ -569,6 +573,8 @@ public class Mapy extends MIDlet implements CommandListener {
             Settings.btAddress = bt.length() == 12 ? bt : Settings.DEFAULT_BT;
             Settings.follow = fFollow.getSelectedIndex() == 0;
             Settings.speedLimits = fLimits.getSelectedIndex() == 0;
+            Settings.akce = fAkce.getSelectedIndex() == 1;
+            map.applyCommands();
             map.follow = Settings.follow;
             Settings.cacheMB = CACHE_MB[fCache.getSelectedIndex()];
             Settings.preview = fPreview.getSelectedIndex() == 0;

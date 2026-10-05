@@ -93,7 +93,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         center(Settings.lat, Settings.lon);
         // only the side buttons: the phone's own menu passes its arrow keys to the map, so the
         // rest is in our menu drawn on the map (side button 4), which owns the keys while open
-        addCommand(SEARCH); addCommand(ZOOM_IN); addCommand(ZOOM_OUT); addCommand(MENU);
+        applyCommands();
         setCommandListener(this);
         Net.listener = this;
         Gps.instance.listener = this;
@@ -331,6 +331,17 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         else if (c == EXIT) app.exit();
     }
 
+    /**
+     * With Settings.akce off the map has no commands at all: the phone's Akce menu (Menu key) then
+     * has nothing to show and can't pass arrow keys to the map. Keys that aren't ours (side
+     * buttons, Menu, Tab...) open our menu instead; their codes are logged.
+     */
+    void applyCommands() {
+        Command[] all = { SEARCH, ZOOM_IN, ZOOM_OUT, MENU };
+        for (int i = 0; i < all.length; i++) removeCommand(all[i]);
+        if (Settings.akce) for (int i = 0; i < all.length; i++) addCommand(all[i]);
+    }
+
     void toggleFullScreen() {
         fullScreen = !fullScreen;
         try { setFullScreenMode(fullScreen); } catch (Throwable e) {}
@@ -520,10 +531,17 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (key == '-' || key == '1') { setZoom(zoom - 1); return; }
         if (key == '0') { toggleFullScreen(); return; }
         if (key == 27) { undoMenuArrows(); return; }
+        if (key == 9) { openMenu(); return; }                   // Tab
         if (key == 'n' || key == 'N' || key == ' ') { next(); return; }
         if (key == 10 || key == 13 || a == FIRE) {
             enterDown = true;           // clicks on release, see below
             enterAt = System.currentTimeMillis();
+            return;
+        }
+        if (key < 0 || key == 0) {
+            // a key Java has no meaning for (side button, Menu...): our menu
+            Log.add("unknown key " + key + ": opens the map menu");
+            openMenu();
             return;
         }
         if (key > 32 && key < 0x10000 && !Character.isDigit((char) key)) {
@@ -535,7 +553,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     // ---------------------------------------------------------------- our menu
 
-    static final Command[] MENU_ITEMS = { OPEN, ROUTE, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, EXIT };
+    static final Command[] MENU_ITEMS = { OPEN, SEARCH, ROUTE, ZOOM_IN, ZOOM_OUT, MYPOS, FOLLOW, GPS, NAV, CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, LOG, SETTINGS, EXIT };
     volatile boolean menuOpen;
     boolean internalCommand;
     int menuSel, menuTop;
@@ -1174,7 +1192,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             g.setColor(0x80848E);
             String help = Settings.pois && zoom < POI_ZOOM
                 ? "Body zájmu od přiblížení " + POI_ZOOM + ". Enter = co je tady."
-                : "Najeď kurzorem na bod, Enter = otevřít. N = další bod. Menu: 4. boční tlačítko.";
+                : "Najeď kurzorem na bod, Enter = otevřít. N = další bod. Menu: Tab." + (Settings.akce ? " (nebo 4. boční tlačítko)" : "");
             y = wrap(g, f, help, 3, y, tw, 4);
         }
         // bottom: last key (for finding Chr+arrow codes), zoom, credits
