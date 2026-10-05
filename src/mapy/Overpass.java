@@ -33,7 +33,7 @@ public class Overpass {
                     good = s;
                     return r;
                 }
-                if (r.code < 500 && r.code != 429) return r;     // our query's fault: no point elsewhere
+                if (r.code == 400) return r;                     // our query's fault: no point elsewhere
                 Log.add("Overpass " + Net.host(SERVERS[s]) + ": HTTP " + r.code + ", trying the next server");
             } catch (IOException e) {
                 last = e;

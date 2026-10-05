@@ -145,11 +145,15 @@ public class Gps implements Runnable, DiscoveryListener {
     // exactly what available() reports, with the GPS sending only GGA + RMC at 1 Hz, ran stable
     // (3.5 min on a bus, delay constant, max gap 1.3 s).
     InputStream src;
-    final byte[] rb = new byte[256];
+    byte[] rb = new byte[2048];
     int rpos, rlen, zeroAvail;
     boolean availBroken;
     /** True during a Bluetooth read; Net waits for it before starting a request. */
     public static volatile boolean inCall;
+    static final long MAX_PAUSE = 3000;
+    long pausedSince;
+    /** For the log: the biggest Bluetooth backlog seen and reads done during a long request. */
+    int maxAvail, overlapReads;
     int searchResp;
 
     int next() throws IOException {
@@ -158,19 +162,34 @@ public class Gps implements Runnable, DiscoveryListener {
             // KERN-EXEC 3 in jes-...-java-comms while tiles were downloading: Bluetooth and HTTP
             // calls into the Java comms layer at the same moment. While a request runs, leave the
             // data in the Bluetooth buffer (150 B/s) and read it in the pauses between requests.
+            // But a long pause (Overpass takes 10 s+) lets kilobytes pile up in the Bluetooth
+            // buffer, and big backlogs are the other suspect for the comms crashes (probe 2.0 crashed
+            // when it read slower than the data came). So: wait at most MAX_PAUSE, then read anyway.
             boolean free;
+            long now = System.currentTimeMillis();
             synchronized (Net.COMMS) {
-                free = !Net.commsBusy();
+                free = !Net.commsBusy() || (pausedSince > 0 && now - pausedSince > MAX_PAUSE);
                 if (free) inCall = true;
             }
-            if (!free) { try { Thread.sleep(50); } catch (InterruptedException e) {} continue; }
+            if (!free) {
+                if (pausedSince == 0) pausedSince = now;
+                try { Thread.sleep(50); } catch (InterruptedException e) {}
+                continue;
+            }
+            if (pausedSince > 0 && now - pausedSince > MAX_PAUSE) overlapReads++;
+            pausedSince = 0;
             int av, n = 0;
             try {
                 av = src.available();
-                if (av > 0) n = src.read(rb, 0, Math.min(av, rb.length));
+                if (av > 0) // read EXACTLY what available() says: a read of a different length (more: probe 1.7,
+                // less: after a backlog bigger than the buffer) crashed with E32USER-CBase 40
+                if (av > rb.length) rb = new byte[av + 512];
+                n = src.read(rb, 0, av);
             } finally {
                 inCall = false;
             }
+            if (av > maxAvail) maxAvail = av;
+            if (av > 1024) Log.add("gps: " + av + " B waiting in the Bluetooth buffer");
             if (av > 0) {
                 if (n < 0) return -1;
                 rpos = 0;
@@ -233,7 +252,8 @@ public class Gps implements Runnable, DiscoveryListener {
                     if (now - lastUi > 500) { lastUi = now; notifyListener(); }
                     if (now - lastTrack > 30000) {      // a track point in the log every 30 s
                         lastTrack = now;
-                        Log.add("gps " + Geo.format(lat, lon) + " " + (int) speedKmh + " km/h " + (int) course + "° sats " + Nmea.sats + " hdop " + Nmea.hdop + ", " + lines + " lines, " + bytes / 1024 + " KB");
+                        Log.add("gps " + Geo.format(lat, lon) + " " + (int) speedKmh + " km/h " + (int) course + "° sats " + Nmea.sats + " hdop " + Nmea.hdop + ", " + lines + " lines, " + bytes / 1024 + " KB, max backlog " + maxAvail + " B, reads during requests " + overlapReads);
+                        maxAvail = 0;
                     }
                 }
                 line.setLength(0);

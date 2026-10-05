@@ -104,7 +104,7 @@ public class Net {
                 try {
                     Response r = request(plain, null, null, label + " (http)");
                     if (r.code >= 500) return r;            // server trouble, says nothing about http
-                    if (r.code < 300 || r.code == 404) {
+                    if (r.code < 300) {
                         if (m == null) Log.add("http works for " + h + " (HTTP " + r.code + ")");
                         hostMode.put(h, "http");
                         return r;
