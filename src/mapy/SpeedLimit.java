@@ -122,7 +122,7 @@ public class SpeedLimit implements Runnable {
         String a = "(around:2000," + Geo.fmt(lat, 5) + "," + Geo.fmt(lon, 5) + ")";
         String q = "[out:csv(::lat,::lon,highway,hazard,maxspeed;false;\"|\")][timeout:10];(node" + a + "[highway=speed_camera];node" + a + "[hazard];);out 100;";
         try {
-            Net.Response r = Net.get(Overpass.URL + Net.encode(q), "radary a nebezpečná místa (OSM)");
+            Net.Response r = Overpass.query(q, "radary a nebezpečná místa (OSM)");
             if (r.code != 200) { Log.add("hazards: HTTP " + r.code); return; }
             String text = Frpc.utf8Decode(r.body, 0, r.body.length);
             Vector v = new Vector();
@@ -184,7 +184,7 @@ public class SpeedLimit implements Runnable {
     void query(double lat, double lon) {
         String q = "[out:json][timeout:10];way(around:30," + Geo.fmt(lat, 6) + "," + Geo.fmt(lon, 6) + ")[highway~\"" + ROADS + "\"];out tags geom;";
         try {
-            Net.Response r = Net.get(Overpass.URL + Net.encode(q), "rychlostní limit (OSM)");
+            Net.Response r = Overpass.query(q, "rychlostní limit (OSM)");
             if (r.code != 200) { Log.add("speed limit query: HTTP " + r.code); return; }
             Vector el = Json.arr(Json.parse(Frpc.utf8Decode(r.body, 0, r.body.length)), "elements");
             int added = 0;

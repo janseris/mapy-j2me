@@ -9,7 +9,40 @@ import java.util.Vector;
  * Light use only (one query per area, at street zoom), with our own User-Agent.
  */
 public class Overpass {
-    static final String URL = "https://overpass-api.de/api/interpreter?data=";
+    /**
+     * Public Overpass servers. The main one (overpass-api.de) often answers 504 when it's busy;
+     * then the next one is tried. The one that last worked is used first.
+     */
+    static final String[] SERVERS = {
+        "https://overpass-api.de/api/interpreter?data=",
+        "https://overpass.private.coffee/api/interpreter?data=",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter?data=",
+    };
+    static int good;
+
+    /** GET an Overpass query, trying the other servers when one is busy (5xx, 429) or unreachable. */
+    public static Net.Response query(String q, String label) throws IOException {
+        IOException last = null;
+        Net.Response r = null;
+        for (int i = 0; i < SERVERS.length; i++) {
+            int s = (good + i) % SERVERS.length;
+            try {
+                r = Net.get(SERVERS[s] + Net.encode(q), label);
+                if (r.code == 200) {
+                    if (s != good) Log.add("Overpass: using " + Net.host(SERVERS[s]));
+                    good = s;
+                    return r;
+                }
+                if (r.code < 500 && r.code != 429) return r;     // our query's fault: no point elsewhere
+                Log.add("Overpass " + Net.host(SERVERS[s]) + ": HTTP " + r.code + ", trying the next server");
+            } catch (IOException e) {
+                last = e;
+                Log.add("Overpass " + Net.host(SERVERS[s]) + ": " + e + ", trying the next server");
+            }
+        }
+        if (r != null) return r;
+        throw last;
+    }
     public static final int MAX = 150;
 
     /** Columns after ::type, ::id, ::lat, ::lon. The first KIND_TAGS of them decide the kind. */
@@ -28,7 +61,7 @@ public class Overpass {
             + "nwr[historic]" + box + ";nwr[leisure~\"^(park|playground|garden)$\"]" + box + ";nwr[military=bunker]" + box + ";"
             + "node[amenity~\"^(drinking_water|parking|shelter|toilets|atm|charging_station)$\"]" + box + ";"
             + "way[amenity=parking]" + box + ";);out center " + MAX + ";";
-        Net.Response r = Net.get(URL + Net.encode(q), "body zájmu (OSM)");
+        Net.Response r = query(q, "body zájmu (OSM)");
         if (r.code != 200) throw new IOException("Overpass HTTP " + r.code);
         return parse(Frpc.utf8Decode(r.body, 0, r.body.length));
     }

@@ -53,6 +53,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     Vector pois = new Vector();                     // Place (osm)
     double[] poiBox;                                // s, w, n, e of the last POI query
     boolean poiFailed;
+    long poiRetryAt;            // after a failure, try again from this time (not hammering the servers)
     Place marker;                                   // search result / detail position
     Place selected;
     Place hovered;
@@ -171,7 +172,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                     synchronized (wake) {
                         status = "";
                         repaintPanel();
-                        try { wake.wait(); } catch (InterruptedException e) {}
+                        // with a POI retry pending, wake up for it; otherwise sleep until something changes
+                        try { if (poiFailed) wake.wait(Math.max(1000, poiRetryAt - System.currentTimeMillis())); else wake.wait(); } catch (InterruptedException e) {}
                     }
                 }
             } catch (Throwable e) {
@@ -303,7 +305,12 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     /** Loads the POIs for the view when needed. False when there's nothing to do. */
     boolean loadPois() {
-        if (!Settings.pois || zoom < POI_ZOOM || poiFailed) return false;
+        if (!Settings.pois || zoom < POI_ZOOM) return false;
+        if (poiFailed) {
+            if (System.currentTimeMillis() < poiRetryAt) return false;
+            poiFailed = false;
+            poiBox = null;
+        }
         double[] v = viewBox(0);
         if (poiBox != null && v[1] >= poiBox[0] && v[0] >= poiBox[1] && v[3] <= poiBox[2] && v[2] <= poiBox[3]) return false;
         double[] g = viewBox(1.0);      // twice the view, so small moves don't need a new query
@@ -319,7 +326,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             repaint();
         } catch (Throwable e) {
             Log.add("POIs: " + e);
-            poiFailed = true;           // until "Načíst znovu", don't keep hammering Overpass
+            poiFailed = true;           // all servers failed: again in 30 s (or now with "Načíst znovu")
+            poiRetryAt = System.currentTimeMillis() + 30000;
             status = "Body zájmu: chyba " + e.getMessage();
         }
         return true;

@@ -153,6 +153,7 @@ public class Net {
             try { Thread.sleep(25); } catch (InterruptedException e) {}
         }
         what = label;
+        Log.add("NET start " + label + ": " + (url.length() > 90 ? url.substring(0, 90) + "..." : url));
         try {
             IOException last = null;
             for (attempt = 1; attempt <= ATTEMPTS; attempt++) {
