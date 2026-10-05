@@ -1381,13 +1381,14 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             y = wrap(g, f, help, 3, y, tw, 4);
         }
         // bottom: last key (for finding Chr+arrow codes), zoom, credits
-        int by = h - 3 * fh - 2;
+        int creditLines = Layers.credit(1).length() > 0 ? 2 : 1;
+        int by = h - (1 + creditLines) * fh - 2;
         g.setColor(0x80848E);
         if (lastKey.length() > 0 && by - fh > y) g.drawString(clip(f, lastKey, tw), 3, by - fh, Graphics.TOP | Graphics.LEFT);
         g.setColor(0xB5BAC1);
         g.drawString("Zoom " + zoom, 3, by, Graphics.TOP | Graphics.LEFT);
         g.drawString(Layers.credit(0), 3, by + fh, Graphics.TOP | Graphics.LEFT);
-        g.drawString(Layers.credit(1), 3, by + 2 * fh, Graphics.TOP | Graphics.LEFT);
+        if (creditLines > 1) g.drawString(Layers.credit(1), 3, by + 2 * fh, Graphics.TOP | Graphics.LEFT);
     }
 
     static String clip(Font f, String s, int w) {

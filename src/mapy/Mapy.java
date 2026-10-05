@@ -480,15 +480,19 @@ public class Mapy extends MIDlet implements CommandListener {
 
     TextField fPc, fUa, fBt, fKey;
     List layerList;
+    int[] layerIds;
 
     /** Map type chooser (a native List: Up/Down move, Enter picks). */
     void chooseLayer() {
         layerList = new List("Typ mapy", List.IMPLICIT);
+        layerIds = new int[Layers.NAMES.length];
+        int n = 0;
         for (int i = 0; i < Layers.NAMES.length; i++) {
-            boolean noKey = Layers.needsKey(i) && Settings.mapyKey.length() == 0;
-            layerList.append((i == Layers.current() ? "* " : "") + Layers.NAMES[i] + (noKey ? " - klíč chybí" : ""), null);
+            if (Layers.needsKey(i) && Settings.mapyKey.length() == 0) continue;    // Mapy.com maps only with a key
+            layerIds[n++] = i;
+            layerList.append((i == Layers.current() ? "* " : "") + Layers.NAMES[i], null);
+            if (i == Layers.current()) layerList.setSelectedIndex(n - 1, true);
         }
-        layerList.setSelectedIndex(Layers.current(), true);
         layerList.addCommand(BACK);
         layerList.setCommandListener(this);
         display.setCurrent(layerList);
@@ -503,7 +507,7 @@ public class Mapy extends MIDlet implements CommandListener {
     /** The settings form's values as one string, to see whether anything changed. */
     String formState() {
         return fPc.getString() + "|" + fUa.getString() + "|" + fKey.getString() + "|" + fBt.getString() + "|" + fPanel.getSelectedIndex() + fCache.getSelectedIndex()
-            + fPreview.getSelectedIndex() + fFollow.getSelectedIndex() + fLimits.getSelectedIndex() + fAkce.getSelectedIndex();
+            + fPreview.getSelectedIndex() + fFollow.getSelectedIndex() + fLimits.getSelectedIndex() + fAkce.getSelectedIndex() + fHttp.getSelectedIndex();
     }
 
     /** Leaving Settings: with changes, ask whether to save them. */
@@ -517,7 +521,7 @@ public class Mapy extends MIDlet implements CommandListener {
         unsaved.setCommandListener(this);
         display.setCurrent(unsaved);
     }
-    ChoiceGroup fPanel, fCache, fPreview, fFollow, fLimits, fAkce;
+    ChoiceGroup fPanel, fCache, fPreview, fFollow, fLimits, fAkce, fHttp;
     static final int[] CACHE_MB = { 0, 4, 8, 16, 32, 48 };
     static final Command CLEAR_CACHE = new Command("Smazat mezipaměť", Command.SCREEN, 3);
     static final int[] PANEL_WIDTHS = { 110, 130, 150, 180, 210, 240 };
@@ -561,6 +565,9 @@ public class Mapy extends MIDlet implements CommandListener {
             new String[] { "vypnuto: menu mapy je Tab / 4. boční tlačítko", "zapnuto (šipky v něm hýbou mapou)" }, null);
         fAkce.setSelectedIndex(Settings.akce ? 1 : 0, true);
         f.append(fAkce);
+        fHttp = new ChoiceGroup("Veřejná data (mapa, trasy, body zájmu, fotky) přes HTTP, když to server dovolí (rychlejší, nešifrované)", Choice.EXCLUSIVE, fl, null);
+        fHttp.setSelectedIndex(Settings.httpFirst ? 0 : 1, true);
+        f.append(fHttp);
         fKey = new TextField("Mapy.com API klíč (vlastní, zdarma na developer.mapy.com; pro mapy Mapy.com)", Settings.mapyKey, 100, TextField.ANY);
         f.append(fKey);
         f.append(fPc);
@@ -578,7 +585,8 @@ public class Mapy extends MIDlet implements CommandListener {
 
     public void commandAction(Command c, Displayable d) {
         if (d == layerList) {
-            int i = layerList.getSelectedIndex();
+            int sel = layerList.getSelectedIndex();
+            int i = sel >= 0 ? layerIds[sel] : -1;
             if (c == List.SELECT_COMMAND && i >= 0) {
                 if (Layers.needsKey(i) && Settings.mapyKey.length() == 0) {
                     Alert a = new Alert("Typ mapy", "Mapy Mapy.com potřebují vlastní API klíč: zaregistrujte se zdarma na developer.mapy.com a zadejte klíč v Nastavení.", null, AlertType.INFO);
@@ -632,6 +640,7 @@ public class Mapy extends MIDlet implements CommandListener {
             Settings.btAddress = bt.length() == 12 ? bt : Settings.DEFAULT_BT;
             Settings.follow = fFollow.getSelectedIndex() == 0;
             Settings.speedLimits = fLimits.getSelectedIndex() == 0;
+            Settings.httpFirst = fHttp.getSelectedIndex() == 0;
             String key = fKey.getString().trim();
             if (!key.equals(Settings.mapyKey)) { Settings.mapyKey = key; map.layerChanged(); }
             Settings.akce = fAkce.getSelectedIndex() == 1;

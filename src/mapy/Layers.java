@@ -28,7 +28,7 @@ public class Layers {
         "https://api.mapy.com/v1/maptiles/aerial/256/{z}/{x}/{y}?apikey={key}",
     };
     static final String[] CREDITS = {
-        "© OpenStreetMap|contributors",
+        "© OpenStreetMap|",
         "© OpenTopoMap|© OpenStreetMap",
         "© ČÚZK|",
         "© ČÚZK|",

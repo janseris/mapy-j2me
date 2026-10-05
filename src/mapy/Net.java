@@ -43,7 +43,39 @@ public class Net {
             + (attempt > 1 ? ", pokus " + attempt : "");
     }
 
+    /**
+     * Plain HTTP where the server allows it: a request without TLS skips the TCP + TLS handshake
+     * cost the phone pays on every HTTPS connection. Public data only (tiles, routes, POIs,
+     * photos), never a URL with a key. Per host: the first GET tries http://; a redirect or an
+     * error marks the host HTTPS-only for this run.
+     */
+    static final java.util.Hashtable hostMode = new java.util.Hashtable();   // host -> "http" / "https"
+
+    static String host(String url) {
+        int s = url.indexOf("://") + 3, e = url.indexOf('/', s);
+        return e < 0 ? url.substring(s) : url.substring(s, e);
+    }
+
     public static Response get(String url, String label) throws IOException {
+        if (Settings.httpFirst && url.startsWith("https://") && url.indexOf("apikey") < 0) {
+            String h = host(url);
+            Object m = hostMode.get(h);
+            if (!"https".equals(m)) {
+                String plain = "http://" + url.substring(8);
+                try {
+                    Response r = request(plain, null, null, label + " (http)");
+                    if (r.code < 300 || r.code >= 400) {
+                        if (m == null) Log.add("http works for " + h + " (HTTP " + r.code + ")");
+                        hostMode.put(h, "http");
+                        return r;
+                    }
+                    Log.add(h + ": HTTP " + r.code + " on http://, using https");
+                } catch (IOException e) {
+                    Log.add(h + ": http:// failed (" + e + "), using https");
+                }
+                hostMode.put(h, "https");
+            }
+        }
         return request(url, null, null, label);
     }
 
