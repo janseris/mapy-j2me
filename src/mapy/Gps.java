@@ -129,7 +129,6 @@ public class Gps implements Runnable, DiscoveryListener {
     int next() throws IOException {
         while (running) {
             if (rpos < rlen) return rb[rpos++] & 0xff;
-            if (availBroken) return src.read();
             // KERN-EXEC 3 in jes-...-java-comms while tiles were downloading: Bluetooth and HTTP
             // calls into the Java comms layer at the same moment. While a request runs, leave the
             // data in the Bluetooth buffer (150 B/s) and read it in the pauses between requests.
@@ -149,12 +148,10 @@ public class Gps implements Runnable, DiscoveryListener {
                 zeroAvail = 0;
                 continue;
             }
-            if (++zeroAvail > 60) {             // 3 s without data in available(): try a blocking read
-                int c = src.read();
-                if (c >= 0) { availBroken = true; Log.add("gps: available() always 0, single bytes"); }
-                zeroAvail = 0;
-                return c;
-            }
+            // No data: keep polling. Never fall back to blocking single-byte reads: when the
+            // Android had no fix it sent nothing for minutes, the fallback took that for a broken
+            // available() and the single-byte reads then crashed (KERN-EXEC 3, as in probe 1.8/1.9).
+            if (++zeroAvail % 200 == 0) Log.add("gps: no data for " + zeroAvail / 20 + " s");
             try { Thread.sleep(50); } catch (InterruptedException e) {}
         }
         return -1;
