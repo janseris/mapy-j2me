@@ -183,6 +183,9 @@ public class Gps implements Runnable, DiscoveryListener {
                     speedKmh = Nmea.speedKmh;
                     course = Nmea.course;
                     lastFix = System.currentTimeMillis();
+                    Settings.gpsLat = lat;
+                    Settings.gpsLon = lon;
+                    Settings.gpsTime = lastFix;
                     if (!fix) { fix = true; status = "poloha OK"; Log.add("gps first fix after " + bytes + " B, " + lines + " lines"); }
                     long now = System.currentTimeMillis();
                     if (now - lastUi > 500) { lastUi = now; notifyListener(); }

@@ -306,7 +306,16 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         else if (c == GPS) { if (Gps.instance.running) Gps.instance.disconnect(); else Gps.instance.connect(); repaintPanel(); }
         else if (c == MYPOS) {
             if (Gps.instance.hasFix()) { follow = true; cursorHidden = true; centerOnGps(); }
-            else { status = "GPS: " + Gps.instance.status; if (!Gps.instance.running) Gps.instance.connect(); repaintPanel(); }
+            else {
+                status = "GPS: " + Gps.instance.status;
+                if (!Gps.instance.running) Gps.instance.connect();
+                if (Settings.gpsTime > 0) {         // meanwhile, the last known position
+                    center(Settings.gpsLat, Settings.gpsLon);
+                    status = "Poslední známá poloha " + age(Settings.gpsTime) + ", čekám na GPS";
+                    viewChanged();
+                }
+                repaintPanel();
+            }
         }
         else if (c == NAV) {
             if (route == null) { status = "Nejdřív naplánuj trasu (detail místa: Trasa sem)"; repaintPanel(); }
@@ -490,11 +499,16 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         }
         boolean dir = a == LEFT || a == RIGHT || a == UP || a == DOWN;
         if (dir) {
+            long now = System.currentTimeMillis();
             if (a == LEFT) kLeft = down;
             if (a == RIGHT) kRight = down;
             if (a == UP) kUp = down;
             if (a == DOWN) kDown = down;
-            long now = System.currentTimeMillis();
+            if (down) pressedAt[a == LEFT ? 0 : a == RIGHT ? 1 : a == UP ? 2 : 3] = now;
+            if (arrowLog < 40) {                // a sample of the raw arrow events, for diagonal problems
+                arrowLog++;
+                Log.add("arrow " + (a == LEFT ? "L" : a == RIGHT ? "R" : a == UP ? "U" : "D") + (down ? (repeat ? " repeat" : " down") : " up") + " " + (now % 100000));
+            }
             if (down && !repeat) {
                 if (now - lastArrow > BURST_GAP) {         // a new burst of arrow keys: remember the view
                     snap = new double[] { cx, cy, mx, my, zoom };
@@ -503,7 +517,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 }
                 if (a == LEFT || a == RIGHT) burstVertical = false;
                 burstTaps++;
-                moveCursor((a == RIGHT ? 3 : a == LEFT ? -3 : 0), (a == DOWN ? 3 : a == UP ? -3 : 0));   // react at once
+                if (!gliding) moveCursor((a == RIGHT ? 3 : a == LEFT ? -3 : 0), (a == DOWN ? 3 : a == UP ? -3 : 0));   // react at once
                 startMover();
             }
             lastArrow = now;
@@ -590,12 +604,56 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     }
 
     String menuLabel(Command c) {
-        if (c == FOLLOW) return "Sledovat polohu: " + (follow ? "zap" : "vyp");
-        if (c == GPS) return Gps.instance.running ? "GPS odpojit" : "GPS připojit";
-        if (c == NAV) return navigating ? "Navigace stop" : "Navigace start";
-        if (c == POIS) return "Body zájmu: " + (Settings.pois ? "zap" : "vyp");
-        if (c == FULL) return "Celá obrazovka: " + (fullScreen ? "zap" : "vyp");
+        if (c == FOLLOW) return "Sledovat polohu";
+        if (c == GPS) return "GPS přes Bluetooth";
+        if (c == NAV) return "Navigace";
+        if (c == POIS) return "Body zájmu";
+        if (c == FULL) return "Celá obrazovka";
+        if (c == MYPOS) return "Moje poloha";
         return c.getLabel();
+    }
+
+    /** Menu item state: -1 = an action, 0 = off, 1 = on (drawn as a checkbox). */
+    int menuCheck(Command c) {
+        if (c == FOLLOW) return follow ? 1 : 0;
+        if (c == GPS) return Gps.instance.running ? 1 : 0;
+        if (c == NAV) return navigating ? 1 : 0;
+        if (c == POIS) return Settings.pois ? 1 : 0;
+        if (c == FULL) return fullScreen ? 1 : 0;
+        return -1;
+    }
+
+    static void checkbox(Graphics g, int x, int y, int sz, boolean on, boolean selected) {
+        g.setColor(selected ? 0xFFFFFF : 0xB5BAC1);
+        g.drawRect(x, y, sz, sz);
+        if (on) {
+            g.setColor(selected ? 0xFFFFFF : 0x6DD58C);
+            g.drawLine(x + 2, y + sz / 2, x + sz / 2 - 1, y + sz - 2);
+            g.drawLine(x + 2, y + sz / 2 + 1, x + sz / 2 - 1, y + sz - 1);
+            g.drawLine(x + sz / 2 - 1, y + sz - 2, x + sz - 2, y + 2);
+            g.drawLine(x + sz / 2 - 1, y + sz - 1, x + sz - 2, y + 3);
+        }
+    }
+
+    /** GPS state: 0 = off, 1 = connected but no position, 2 = receiving positions. */
+    static int gpsState() {
+        Gps g = Gps.instance;
+        return g.hasFix() ? 2 : g.running ? 1 : 0;
+    }
+
+    /** Location pin icon (about 10 x 14 px, tip at x, y + 13): blue when receiving, crossed out otherwise. */
+    static void gpsIcon(Graphics g, int x, int y, int state) {
+        int col = state == 2 ? 0x1E88E5 : state == 1 ? 0xF9A825 : 0x80848E;
+        g.setColor(col);
+        g.fillArc(x, y, 10, 10, 0, 360);
+        g.fillTriangle(x + 1, y + 7, x + 9, y + 7, x + 5, y + 13);
+        g.setColor(0xFFFFFF);
+        g.fillArc(x + 3, y + 3, 4, 4, 0, 360);
+        if (state != 2) {                       // crossed out: no position
+            g.setColor(0xEE4444);
+            g.drawLine(x - 1, y + 13, x + 11, y - 1);
+            g.drawLine(x, y + 13, x + 12, y - 1);
+        }
     }
 
     void paintMenu(Graphics g, int w, int h) {
@@ -603,7 +661,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         int ih = f.getHeight() + 3, n = MENU_ITEMS.length;
         int mw0 = 0;
         for (int i = 0; i < n; i++) mw0 = Math.max(mw0, b.stringWidth(menuLabel(MENU_ITEMS[i])));
-        int bw = Math.min(w - 4, mw0 + 26), rows = Math.min(n, (h - 8) / ih);
+        int bw = Math.min(w - 4, mw0 + 42), rows = Math.min(n, (h - 8) / ih);
         if (menuSel < menuTop) menuTop = menuSel;
         if (menuSel >= menuTop + rows) menuTop = menuSel - rows + 1;
         int bh = rows * ih + 4, x0 = w - bw - 2, y0 = 2;
@@ -614,9 +672,13 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         for (int r = 0; r < rows; r++) {
             int i = menuTop + r, y = y0 + 2 + r * ih;
             if (i == menuSel) { g.setColor(0x1565C0); g.fillRect(x0 + 2, y, bw - 4, ih); }
+            Command mc = MENU_ITEMS[i];
+            int chk = menuCheck(mc), cs = f.getHeight() - 5;
+            if (chk >= 0) checkbox(g, x0 + 6, y + (ih - cs) / 2, cs, chk == 1, i == menuSel);
+            else if (mc == MYPOS) gpsIcon(g, x0 + 6, y + (ih - 14) / 2, gpsState());
             g.setFont(i == menuSel ? b : f);
             g.setColor(i == menuSel ? 0xFFFFFF : 0xDBDEE1);
-            g.drawString(menuLabel(MENU_ITEMS[i]), x0 + 6, y + 1, Graphics.TOP | Graphics.LEFT);
+            g.drawString(menuLabel(mc), x0 + 22, y + 1, Graphics.TOP | Graphics.LEFT);
         }
         g.setColor(0x80848E);
         if (menuTop > 0) g.fillTriangle(x0 + bw - 10, y0 + 8, x0 + bw - 6, y0 + 4, x0 + bw - 2, y0 + 8);
@@ -628,23 +690,37 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     /** A tap only nudges the cursor; it glides when the key is held this long. */
     static final long HOLD_MS = 250;
 
+    /** Last press of left, right, up, down; a direction counts as held for a moment after a press,
+     *  so a joystick that sends its diagonal as quick alternating presses still moves diagonally. */
+    final long[] pressedAt = new long[4];
+    static final long PRESS_HOLD = 180;
+    int arrowLog;
+    volatile boolean gliding;
+
+    boolean held(boolean flag, int i, long now) {
+        return flag || now - pressedAt[i] < PRESS_HOLD;
+    }
+
     void startMover() {
         if (mover != null && mover.isAlive()) return;
         mover = new Thread() {
             public void run() {
                 double v = V0, fx = 0, fy = 0;
-                try { Thread.sleep(HOLD_MS); } catch (InterruptedException e) {}
                 long last = System.currentTimeMillis(), started = last;
                 // moves while a direction is held (keyReleased stops it); time-based, so uneven
                 // timer ticks (62 ms resolution on the 9300) don't make it jerky
-                while ((kLeft || kRight || kUp || kDown) && System.currentTimeMillis() - started < 15000) {
+                while (System.currentTimeMillis() - started < 15000) {
                     try { Thread.sleep(25); } catch (InterruptedException e) {}
                     long now = System.currentTimeMillis();
+                    boolean l = held(kLeft, 0, now), rt = held(kRight, 1, now), u = held(kUp, 2, now), dn = held(kDown, 3, now);
+                    if (!(l || rt || u || dn)) break;
                     double dt = (now - last) / 1000.0;
                     last = now;
                     if (dt <= 0) continue;
+                    if (now - started < HOLD_MS) continue;     // a tap only nudges; holding glides
+                    gliding = true;
                     v = Math.min(VMAX, v + ACCEL * dt);
-                    int hx = (kRight ? 1 : 0) - (kLeft ? 1 : 0), hy = (kDown ? 1 : 0) - (kUp ? 1 : 0);
+                    int hx = (rt ? 1 : 0) - (l ? 1 : 0), hy = (dn ? 1 : 0) - (u ? 1 : 0);
                     double d = v * dt * (hx != 0 && hy != 0 ? 0.7071 : 1.0);
                     fx += hx * d;
                     fy += hy * d;
@@ -656,7 +732,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                         moveCursor(ix, iy);
                     }
                 }
-                kLeft = kRight = kUp = kDown = false;
+                gliding = false;
+                if (System.currentTimeMillis() - started >= 15000) kLeft = kRight = kUp = kDown = false;   // a lost release
             }
         };
         mover.start();
@@ -920,9 +997,29 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         g.fillTriangle(ex + 1, ey - 16, ex + 11, ey - 12, ex + 1, ey - 8);
     }
 
+    /** "před 3 min" for the last known position. */
+    static String age(long t) {
+        long s = (System.currentTimeMillis() - t) / 1000;
+        if (s < 60) return "před " + s + " s";
+        if (s < 3600) return "před " + s / 60 + " min";
+        if (s < 86400) return "před " + s / 3600 + " h";
+        return "před " + s / 86400 + " dny";
+    }
+
     void paintGps(Graphics g, int ox, int oy) {
         Gps gp = Gps.instance;
-        if (!gp.hasFix()) return;
+        if (!gp.hasFix()) {
+            // no current position: the last known one, hollow and grey
+            if (Settings.gpsTime == 0) return;
+            int x = (int) (Geo.lonToX(Settings.gpsLon, zoom) - ox), y = (int) (Geo.latToY(Settings.gpsLat, zoom) - oy);
+            g.setColor(0xFFFFFF);
+            g.fillArc(x - 7, y - 7, 14, 14, 0, 360);
+            g.setColor(0x80848E);
+            g.fillArc(x - 5, y - 5, 10, 10, 0, 360);
+            g.setColor(0xFFFFFF);
+            g.fillArc(x - 2, y - 2, 4, 4, 0, 360);
+            return;
+        }
         int x = (int) (Geo.lonToX(gp.lon, zoom) - ox), y = (int) (Geo.latToY(gp.lat, zoom) - oy);
         if (gp.speedKmh > 2) {
             // moving: a navigation arrow pointing where we go
@@ -1102,6 +1199,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         g.setFont(b);
         g.setColor(0xFFFFFF);
         g.drawString("Mapy 9300", 3, y, Graphics.TOP | Graphics.LEFT);
+        gpsIcon(g, pw - 16, y, gpsState());
         y += b.getHeight() + 2;
         g.setFont(f);
         String prog = Net.progressText();
@@ -1139,6 +1237,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         } else if (Gps.instance.running && !Gps.instance.hasFix()) {
             g.setColor(0x80848E);
             y = wrap(g, f, "GPS: " + Gps.instance.status, 3, y, tw, 2);
+            if (Settings.gpsTime > 0) y = wrap(g, f, "Šedá tečka = poslední poloha " + age(Settings.gpsTime), 3, y, tw, 2);
         }
         Gps gq = Gps.instance;
         if (gq.hasFix()) {
