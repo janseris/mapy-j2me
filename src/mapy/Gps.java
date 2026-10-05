@@ -39,7 +39,9 @@ public class Gps implements Runnable, DiscoveryListener {
     public void connect() {
         if (running) return;
         running = true;
-        new Thread(this).start();
+        Thread t = new Thread(this);
+        t.setPriority(Thread.MAX_PRIORITY);     // keep up with the Bluetooth data (see next())
+        t.start();
     }
 
     public void disconnect() {
@@ -159,32 +161,21 @@ public class Gps implements Runnable, DiscoveryListener {
     int next() throws IOException {
         while (running) {
             if (rpos < rlen) return rb[rpos++] & 0xff;
-            // KERN-EXEC 3 in jes-...-java-comms while tiles were downloading: Bluetooth and HTTP
-            // calls into the Java comms layer at the same moment. While a request runs, leave the
-            // data in the Bluetooth buffer (150 B/s) and read it in the pauses between requests.
-            // But a long pause (Overpass takes 10 s+) lets kilobytes pile up in the Bluetooth
-            // buffer, and big backlogs are the other suspect for the comms crashes (probe 2.0 crashed
-            // when it read slower than the data came). So: wait at most MAX_PAUSE, then read anyway.
-            boolean free;
-            long now = System.currentTimeMillis();
-            synchronized (Net.COMMS) {
-                free = !Net.commsBusy() || (pausedSince > 0 && now - pausedSince > MAX_PAUSE);
-                if (free) inCall = true;
-            }
-            if (!free) {
-                if (pausedSince == 0) pausedSince = now;
-                try { Thread.sleep(50); } catch (InterruptedException e) {}
-                continue;
-            }
-            if (pausedSince > 0 && now - pausedSince > MAX_PAUSE) overlapReads++;
-            pausedSince = 0;
+            // Read continuously, also while HTTP requests run. Probe 2.6's test settled it: 20 s
+            // without reading (data piling up in the Bluetooth buffer) crashes the comms thread
+            // with E32USER-CBase 40. Mapy 3.0-4.0 paused reading during requests and crashed that
+            // way; earlier crashes during downloads were most likely the GPS thread falling behind
+            // too. So: never pause, and run at the highest priority.
+            inCall = true;
             int av, n = 0;
             try {
                 av = src.available();
-                if (av > 0) // read EXACTLY what available() says: a read of a different length (more: probe 1.7,
-                // less: after a backlog bigger than the buffer) crashed with E32USER-CBase 40
-                if (av > rb.length) rb = new byte[av + 512];
-                n = src.read(rb, 0, av);
+                if (av > 0) {
+                    // read EXACTLY what available() says: a read of a different length (more: probe
+                    // 1.7, less: after a backlog bigger than the buffer) crashed with E32USER-CBase 40
+                    if (av > rb.length) rb = new byte[av + 512];
+                    n = src.read(rb, 0, av);
+                }
             } finally {
                 inCall = false;
             }
@@ -252,7 +243,7 @@ public class Gps implements Runnable, DiscoveryListener {
                     if (now - lastUi > 500) { lastUi = now; notifyListener(); }
                     if (now - lastTrack > 30000) {      // a track point in the log every 30 s
                         lastTrack = now;
-                        Log.add("gps " + Geo.format(lat, lon) + " " + (int) speedKmh + " km/h " + (int) course + "° sats " + Nmea.sats + " hdop " + Nmea.hdop + ", " + lines + " lines, " + bytes / 1024 + " KB, max backlog " + maxAvail + " B, reads during requests " + overlapReads);
+                        Log.add("gps " + Geo.format(lat, lon) + " " + (int) speedKmh + " km/h " + (int) course + "° sats " + Nmea.sats + " hdop " + Nmea.hdop + ", " + lines + " lines, " + bytes / 1024 + " KB, max backlog " + maxAvail + " B");
                         maxAvail = 0;
                     }
                 }
