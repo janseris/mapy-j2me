@@ -47,8 +47,13 @@ public class BtSearch implements DiscoveryListener, CommandListener {
             Log.add("bt inquiry start, known " + devices.size());
         } catch (Throwable e) {
             Log.add("bt inquiry: " + e);
-            setInfo("Hledání selhalo: " + e.getMessage() + "\nJe zapnutý Bluetooth? Není 9300 připojená přes Bluetooth k PC?");
-            if (devices.size() > 0) showList("Známá zařízení");
+            final String title = Gps.btOff(e) ? "Bluetooth je vypnutý" : "Hledání selhalo";
+            display.callSerially(new Runnable() {
+                public void run() { wait.setTitle(title); }
+            });
+            setInfo(Gps.btOff(e) ? "Bluetooth je vypnutý. Zapni ho v telefonu (Ovládací panel → Bluetooth) a hledej znovu."
+                : "Hledání selhalo: " + e.getMessage() + "\nNení 9300 připojená přes Bluetooth k PC?");
+            if (!Gps.btOff(e) && devices.size() > 0) showList("Známá zařízení");
         }
     }
 

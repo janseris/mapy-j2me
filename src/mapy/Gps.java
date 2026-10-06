@@ -52,6 +52,18 @@ public class Gps implements Runnable, DiscoveryListener {
         notifyListener();
     }
 
+    public static final String BT_OFF = "Bluetooth je vypnutý: zapni ho v telefonu (Ovládací panel → Bluetooth), pak G";
+
+    /**
+     * Bluetooth switched off: the 9300 throws BluetoothStateException or an IOException with
+     * Symbian error -44 (KErrHardwareNotAvailable, "hardware není k dispozici").
+     */
+    public static boolean btOff(Throwable e) {
+        if (e instanceof javax.bluetooth.BluetoothStateException) return true;
+        String m = String.valueOf(e.getMessage()).toLowerCase();
+        return m.indexOf("-44") >= 0 || m.indexOf("hardware") >= 0;
+    }
+
     void setStatus(String s) {
         status = s;
         Log.add("gps: " + s);
@@ -96,6 +108,11 @@ public class Gps implements Runnable, DiscoveryListener {
                     }
                 } catch (Throwable e) {
                     Log.add("gps service search: " + e);
+                    if (btOff(e)) {
+                        setStatus(BT_OFF);
+                        running = false;
+                        return;
+                    }
                 } finally {
                     inCall = false;
                 }
@@ -122,6 +139,11 @@ public class Gps implements Runnable, DiscoveryListener {
                 } catch (InterruptedException e) {
                 } catch (IOException e) {
                     Log.add("gps " + url + ": " + e);
+                    if (btOff(e)) {
+                        setStatus(BT_OFF);
+                        running = false;
+                        return;
+                    }
                 }
             }
             if (conn == null) {
@@ -132,7 +154,7 @@ public class Gps implements Runnable, DiscoveryListener {
             setStatus("připojeno, čekám na polohu");
             read(conn.openInputStream());
         } catch (Throwable e) {
-            if (running) setStatus("chyba: " + e.getMessage());
+            if (running) setStatus(btOff(e) ? BT_OFF : "chyba: " + e.getMessage());
         } finally {
             try { if (conn != null) conn.close(); } catch (Throwable e) {}
             conn = null;
