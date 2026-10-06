@@ -79,10 +79,10 @@ class Nmea {
     }
 
     static String describe() {
-        if (lat == 0 && lon == 0) return "bez polohy (fix " + fixQuality + ", satelity " + sats + ")";
-        return fmt(lat, 6) + ", " + fmt(lon, 6) + "  " + fmt(speedKmh, 1) + " km/h  kurz " + fmt(course, 0)
-            + "\nsatelity " + sats + ", HDOP " + fmt(hdop, 1) + ", výška " + fmt(alt, 0) + " m, čas " + time
-            + (valid ? "" : " (RMC neplatné)");
+        if (lat == 0 && lon == 0) return "no position (fix " + fixQuality + ", satellites " + sats + ")";
+        return fmt(lat, 6) + ", " + fmt(lon, 6) + "  " + fmt(speedKmh, 1) + " km/h  course " + fmt(course, 0)
+            + "\nsatellites " + sats + ", HDOP " + fmt(hdop, 1) + ", altitude " + fmt(alt, 0) + " m, time " + time
+            + (valid ? "" : " (RMC invalid)");
     }
 
     static String fmt(double v, int decimals) {

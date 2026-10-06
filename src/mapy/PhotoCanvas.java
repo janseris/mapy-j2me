@@ -5,9 +5,9 @@ import javax.microedition.lcdui.*;
 
 /** Full-screen photo viewer: left/right = previous/next photo, Back returns to the detail. */
 public class PhotoCanvas extends Canvas implements CommandListener, Runnable {
-    static final Command BACK = new Command("Zpět", Command.BACK, 1);
-    static final Command PREV = new Command("Předchozí", Command.SCREEN, 2);
-    static final Command NEXT = new Command("Další", Command.SCREEN, 3);
+    static final Command BACK = new Command("Back", Command.BACK, 1);
+    static final Command PREV = new Command("Previous", Command.SCREEN, 2);
+    static final Command NEXT = new Command("Next", Command.SCREEN, 3);
 
     final Mapy app;
     final Displayable back;
@@ -30,7 +30,7 @@ public class PhotoCanvas extends Canvas implements CommandListener, Runnable {
         if (loading) return;
         loading = true;
         image = null;
-        status = "Načítám fotku " + (index + 1) + "/" + urls.size() + "...";
+        status = "Loading photo " + (index + 1) + "/" + urls.size() + "...";
         repaint();
         new Thread(this).start();
     }
@@ -38,10 +38,10 @@ public class PhotoCanvas extends Canvas implements CommandListener, Runnable {
     public void run() {
         try {
             int h = getHeight() - 20;
-            image = Photos.load((String) urls.elementAt(index), h, "fotka " + (index + 1));
+            image = Photos.load((String) urls.elementAt(index), h, "photo " + (index + 1));
             status = "";
         } catch (Throwable e) {
-            status = "Fotku se nepodařilo načíst: " + e.getMessage();
+            status = "The photo could not be loaded: " + e.getMessage();
         } finally {
             loading = false;
             repaint();
@@ -77,7 +77,7 @@ public class PhotoCanvas extends Canvas implements CommandListener, Runnable {
         Font f = Font.getFont(Font.FACE_SYSTEM, Font.STYLE_PLAIN, Font.SIZE_SMALL);
         g.setFont(f);
         g.setColor(0xFFFFFF);
-        String cap = title + "   " + (index + 1) + " / " + urls.size() + (status.length() > 0 ? "   " + status : "   (šipky = další)");
+        String cap = title + "   " + (index + 1) + " / " + urls.size() + (status.length() > 0 ? "   " + status : "   (arrows = next)");
         g.drawString(cap, 4, h - f.getHeight() - 1, Graphics.TOP | Graphics.LEFT);
     }
 }

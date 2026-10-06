@@ -9,19 +9,19 @@ import javax.microedition.rms.RecordStore;
  * Odkud / Kam picker, like the pubtran app's: typing on the keyboard goes straight into the
  * field, Mapy.com suggestions come when typing pauses (from 2 characters), one request at a
  * time. With an empty field: "my position", "point under the map cursor" and recent places.
- * Up/Down move the highlight, Enter picks; "Upravit text" opens the phone's editor (accents).
+ * Up/Down move the highlight, Enter picks; "Edit text" opens the phone's editor (accents).
  */
 public class PlacePicker extends Canvas implements CommandListener {
     public interface Picked {
         void picked(Place p);
     }
 
-    static final Command PICK = new Command("Vybrat", Command.SCREEN, 1);
-    static final Command EDIT = new Command("Upravit text", Command.SCREEN, 2);
-    static final Command SEARCH = new Command("Hledat", Command.SCREEN, 3);
-    static final Command BACK = new Command("Zpět", Command.BACK, 4);
-    static final Command TB_OK = new Command("Hledat", Command.OK, 1);
-    static final Command TB_BACK = new Command("Zpět", Command.BACK, 2);
+    static final Command PICK = new Command("Select", Command.SCREEN, 1);
+    static final Command EDIT = new Command("Edit text", Command.SCREEN, 2);
+    static final Command SEARCH = new Command("Search", Command.SCREEN, 3);
+    static final Command BACK = new Command("Back", Command.BACK, 4);
+    static final Command TB_OK = new Command("Search", Command.OK, 1);
+    static final Command TB_BACK = new Command("Back", Command.BACK, 2);
     static final int MIN_CHARS = 2, DELAY_MS = 800;
 
     /** Special places, resolved when the route is planned. */
@@ -52,7 +52,7 @@ public class PlacePicker extends Canvas implements CommandListener {
 
     static Place gpsPlace() {
         Place p = new Place();
-        p.title = "Moje poloha (GPS)";
+        p.title = "My position (GPS)";
         p.source = GPS;
         return p;
     }
@@ -66,14 +66,14 @@ public class PlacePicker extends Canvas implements CommandListener {
         Place c = new Place();
         c.lon = Geo.xToLon(m.wx(m.mx), m.zoom);
         c.lat = Geo.yToLat(m.wy(m.my), m.zoom);
-        c.title = m.hovered != null ? m.hovered.title : "Bod pod kurzorem na mapě";
+        c.title = m.hovered != null ? m.hovered.title : "Point under the map cursor";
         c.subtitle = Geo.format(c.lat, c.lon);
         if (m.hovered != null) { c.lon = m.hovered.lon; c.lat = m.hovered.lat; }
         v.addElement(c);
         Vector r = recent();
         for (int i = 0; i < r.size(); i++) v.addElement(r.elementAt(i));
         places = v;
-        status = "Pište název místa nebo adresu. Nedávná místa:";
+        status = "Type a place name or address. Recent places:";
         selected = 0;
         scroll = 0;
         repaint();
@@ -87,14 +87,14 @@ public class PlacePicker extends Canvas implements CommandListener {
         String q = query.trim();
         if (q.length() == 0) { lastSearched = null; showStart(); return; }
         if (q.length() >= MIN_CHARS) {
-            status = busy ? "Hledám... (pak \"" + q + "\")" : "Hledání po pauze v psaní...";
+            status = busy ? "Searching... (then \"" + q + "\")" : "Searching after a pause in typing...";
             timer = new java.util.Timer();
             timer.schedule(new java.util.TimerTask() {
                 public void run() {
                     if (!busy && !query.trim().equals(lastSearched)) searchNow();
                 }
             }, DELAY_MS);
-        } else status = "Pište dál...";
+        } else status = "Keep typing...";
         repaint();
     }
 
@@ -112,7 +112,7 @@ public class PlacePicker extends Canvas implements CommandListener {
         new Thread() {
             public void run() {
                 try {
-                    status = "Hledám \"" + q + "\"...";
+                    status = "Searching \"" + q + "\"...";
                     repaint();
                     MapCanvas m = app.map;
                     Vector r = MapyApi.suggest(q, m.centerLon(), m.centerLat(), m.viewBox(0), m.zoom);
@@ -120,10 +120,10 @@ public class PlacePicker extends Canvas implements CommandListener {
                         places = r;
                         selected = r.size() > 0 ? 0 : -1;
                         scroll = 0;
-                        status = r.size() == 0 ? "Nic nenalezeno." : "Návrhy (" + r.size() + ") - Enter = vybrat";
+                        status = r.size() == 0 ? "Nothing found." : "Suggestions (" + r.size() + ") - Enter = select";
                     }
                 } catch (Throwable e) {
-                    if (gen == generation) status = "Chyba: " + e.getMessage();
+                    if (gen == generation) status = "Error: " + e.getMessage();
                     Log.add("picker suggest: " + e);
                 } finally {
                     busy = false;
@@ -268,7 +268,7 @@ public class PlacePicker extends Canvas implements CommandListener {
         g.drawRect(3, fy, w - 7, fhh - 1);
         g.setFont(b);
         g.setColor(0x000000);
-        String shown = "Hledat: " + query + "_";
+        String shown = "Search: " + query + "_";
         g.drawString(MapCanvas.clip(b, shown, w - 14), 7, fy + 3, Graphics.TOP | Graphics.LEFT);
         int y = fy + fhh + 2;
         g.setFont(f);

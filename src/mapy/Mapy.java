@@ -11,14 +11,14 @@ import javax.microedition.midlet.*;
  * the map's bottom strip shows the progress.
  */
 public class Mapy extends MIDlet implements CommandListener {
-    static final Command BACK = new Command("Zpět", Command.BACK, 1);
-    static final Command DO_SEARCH = new Command("Hledat", Command.SCREEN, 1);
-    static final Command SHOW = new Command("Ukázat na mapě", Command.SCREEN, 1);
-    static final Command MAPY_DETAIL = new Command("Detail z Mapy.com", Command.SCREEN, 2);
-    static final Command SAVE = new Command("Uložit", Command.SCREEN, 1);
-    static final Command SEND = new Command("Odeslat log na PC", Command.SCREEN, 2);
-    static final Command ROUTE_WALK = new Command("Trasa sem pěšky", Command.SCREEN, 2);
-    static final Command ROUTE_CAR = new Command("Trasa sem autem", Command.SCREEN, 2);
+    static final Command BACK = new Command("Back", Command.BACK, 1);
+    static final Command DO_SEARCH = new Command("Search", Command.SCREEN, 1);
+    static final Command SHOW = new Command("Show on map", Command.SCREEN, 1);
+    static final Command MAPY_DETAIL = new Command("Detail from Mapy.com", Command.SCREEN, 2);
+    static final Command SAVE = new Command("Save", Command.SCREEN, 1);
+    static final Command SEND = new Command("Send log to PC", Command.SCREEN, 2);
+    static final Command ROUTE_WALK = new Command("Route here on foot", Command.SCREEN, 2);
+    static final Command ROUTE_CAR = new Command("Route here by car", Command.SCREEN, 2);
 
     Display display;
     MapCanvas map;
@@ -40,7 +40,7 @@ public class Mapy extends MIDlet implements CommandListener {
         display.setCurrent(map);
         if (Settings.gpsAuto) {
             Log.add("GPS on at start");
-            Gps.instance.connect();     // gives up by itself (status "nepřipojeno") when the phone isn't there
+            Gps.instance.connect();     // gives up by itself (status "not connected") when the phone isn't there
         }
     }
 
@@ -80,15 +80,15 @@ public class Mapy extends MIDlet implements CommandListener {
         if (mapOnTop()) display.setCurrent(d);
         else {
             Log.add(what + " ready, not shown: another screen is open");
-            map.status = what + " připraven, ale byla otevřená jiná obrazovka";
+            map.status = what + " ready, but another screen was open";
         }
     }
 
     void error(String what, Throwable e) {
         Log.add(what + ": " + e);
         String msg = e.getMessage() != null && !(e instanceof RuntimeException) ? e.getMessage() : e.toString();
-        if (!mapOnTop()) { map.status = what + ": chyba " + msg; return; }
-        Alert a = new Alert("Chyba", what + ":\n" + msg, null, AlertType.ERROR);
+        if (!mapOnTop()) { map.status = what + ": error " + msg; return; }
+        Alert a = new Alert("Error", what + ":\n" + msg, null, AlertType.ERROR);
         a.setTimeout(Alert.FOREVER);
         display.setCurrent(a, map);
     }
@@ -110,7 +110,7 @@ public class Mapy extends MIDlet implements CommandListener {
 
         void go() {
             if (busy) {
-                Alert a = new Alert("Mapy", "Počkej, ještě se načítá předchozí požadavek.", null, AlertType.INFO);
+                Alert a = new Alert("Mapy", "Wait, the previous request is still loading.", null, AlertType.INFO);
                 a.setTimeout(2000);
                 display.setCurrent(a, display.getCurrent());
                 return;
@@ -125,7 +125,7 @@ public class Mapy extends MIDlet implements CommandListener {
 
     void search(String start) {
         if (searchBox == null) {
-            searchBox = new TextBox("Hledat (místo, adresa, firma)", "", 100, TextField.ANY);
+            searchBox = new TextBox("Search (place, address, business)", "", 100, TextField.ANY);
             searchBox.addCommand(DO_SEARCH);
             searchBox.addCommand(BACK);
             searchBox.setCommandListener(this);
@@ -137,19 +137,19 @@ public class Mapy extends MIDlet implements CommandListener {
     void runSearch(final String q) {
         if (q.trim().length() == 0) { showMap(); return; }
         new Task() {
-            String name() { return "Hledání"; }
+            String name() { return "Search"; }
             void work() throws Exception {
                 double[] v = map.viewBox(0);
                 Vector r = MapyApi.suggest(q, map.centerLon(), map.centerLat(), v, map.zoom);
                 resultPlaces = r;
-                results = new List("Výsledky: " + q, List.IMPLICIT);
+                results = new List("Results: " + q, List.IMPLICIT);
                 for (int i = 0; i < r.size(); i++) results.append(((Place) r.elementAt(i)).toString(), null);
-                if (r.size() == 0) results.append("(nic nenalezeno)", null);
+                if (r.size() == 0) results.append("(nothing found)", null);
                 results.addCommand(BACK);
                 results.addCommand(SHOW);
                 results.setSelectCommand(SHOW);
                 results.setCommandListener(Mapy.this);
-                showResult(results, "Výsledek hledání");
+                showResult(results, "Search result");
             }
         }.go();
     }
@@ -175,7 +175,7 @@ public class Mapy extends MIDlet implements CommandListener {
 
     void whatsHere(final double lon, final double lat, final int zoom) {
         new Task() {
-            String name() { return "Co je tady"; }
+            String name() { return "What's here"; }
             void work() throws Exception {
                 FrpcStruct d = MapyApi.detailAt(lon, lat, zoom);
                 Place p = placeOf(d, lon, lat);
@@ -238,7 +238,7 @@ public class Mapy extends MIDlet implements CommandListener {
                     String rating = d == null ? "" : rating(d);
                     map.setPreview(p, null, rating);
                     String u = d == null ? null : Photos.header(d);
-                    if (u != null) map.setPreview(p, Photos.load(u, 80, "náhled"), rating);
+                    if (u != null) map.setPreview(p, Photos.load(u, 80, "preview"), rating);
                 } catch (Throwable e) {
                     Log.add("preview " + p.title + ": " + e);
                 } finally {
@@ -251,12 +251,12 @@ public class Mapy extends MIDlet implements CommandListener {
     static String rating(FrpcStruct d) {
         FrpcStruct rv = d.getStruct("review");
         if (rv == null || rv.getDouble("review_rating_stars") == null) return "";
-        return Geo.fmt(rv.getDouble("review_rating_stars").doubleValue(), 1) + " z 5 (" + rv.getInt("total", 0) + " hodnocení)";
+        return Geo.fmt(rv.getDouble("review_rating_stars").doubleValue(), 1) + " of 5 (" + rv.getInt("total", 0) + " reviews)";
     }
 
     static Place placeOf(FrpcStruct d, double lon, double lat) {
         Place p = new Place();
-        p.title = d.getString("title", "Místo");
+        p.title = d.getString("title", "Place");
         p.subtitle = d.getString("subtitle", "");
         p.source = d.getString("srcSource", "");
         p.id = d.getLong("srcId", 0);
@@ -277,8 +277,8 @@ public class Mapy extends MIDlet implements CommandListener {
         if (d != null) {
             add(f, null, d.getString("title", p.title));
             add(f, null, d.getString("subtitle", ""));
-            add(f, "Adresa", d.getString("address", ""));
-            add(f, "Hodnocení", rating(d));
+            add(f, "Address", d.getString("address", ""));
+            add(f, "Rating", rating(d));
             String desc = d.getString("description", "");
             if (desc.length() > 1500) desc = desc.substring(0, 1500) + "...";
             add(f, null, stripTags(desc));
@@ -291,9 +291,9 @@ public class Mapy extends MIDlet implements CommandListener {
         } else {
             add(f, null, p.title);
             add(f, null, p.subtitle);
-            add(f, "Data OpenStreetMap", p.tags);
+            add(f, "OpenStreetMap data", p.tags);
         }
-        add(f, "Poloha", Geo.format(p.lat, p.lon));
+        add(f, "Position", Geo.format(p.lat, p.lon));
         f.addCommand(BACK);
         f.addCommand(SHOW);
         f.addCommand(ROUTE_WALK);
@@ -301,7 +301,7 @@ public class Mapy extends MIDlet implements CommandListener {
         if (p.osm && d == null) f.addCommand(MAPY_DETAIL);
         photosCommand = null;
         if (detailPhotos.size() > 0) {
-            photosCommand = new Command("Fotky (" + detailPhotos.size() + ")", Command.SCREEN, 1);
+            photosCommand = new Command("Photos (" + detailPhotos.size() + ")", Command.SCREEN, 1);
             f.addCommand(photosCommand);
         }
         if (header != null) {
@@ -313,11 +313,11 @@ public class Mapy extends MIDlet implements CommandListener {
                     // back to the map crashed the app (KERN-EXEC 3 in Main, Mapy 3.3).
                     Item it;
                     try {
-                        Image im = Photos.load(header, 120, "foto detailu");
+                        Image im = Photos.load(header, 120, "detail photo");
                         it = new ImageItem(null, im, Item.LAYOUT_CENTER | Item.LAYOUT_NEWLINE_AFTER, "foto");
                     } catch (Throwable e) {
                         Log.add("detail photo " + header + ": " + e);
-                        it = new StringItem("Fotka", "nepodařilo se načíst (" + e + ")");
+                        it = new StringItem("Photo", "could not be loaded (" + e + ")");
                     }
                     final Item item = it;
                     display.callSerially(new Runnable() {
@@ -332,7 +332,7 @@ public class Mapy extends MIDlet implements CommandListener {
         f.setCommandListener(this);
         if (!mapOnTop()) {
             Log.add("detail " + p.title + " ready, not shown: another screen is open");
-            map.status = "Detail " + p.title + " připraven (Enter)";
+            map.status = "Detail " + p.title + " ready (Enter)";
             return;
         }
         detailForm = f;
@@ -395,7 +395,7 @@ public class Mapy extends MIDlet implements CommandListener {
         if (!Gps.instance.hasFix()) {
             map.initCursor();
             from = new Place();
-            from.title = "Kurzor na mapě";
+            from.title = "Map cursor";
             from.lon = Geo.xToLon(map.wx(map.mx), map.zoom);
             from.lat = Geo.yToLat(map.wy(map.my), map.zoom);
             Log.add("route from the map cursor (no GPS fix)");
@@ -403,10 +403,10 @@ public class Mapy extends MIDlet implements CommandListener {
         planRoute(from, to, car, car && routeForm.noToll, false);
     }
 
-    /** Plans a route; "Moje poloha" resolves to the current GPS fix. Optionally starts navigation. */
+    /** Plans a route; "My position" resolves to the current GPS fix. Optionally starts navigation. */
     void planRoute(final Place from, final Place to, final boolean car, final boolean noToll, final boolean nav) {
         new Task() {
-            String name() { return "Trasa"; }
+            String name() { return "Route"; }
             void work() throws Exception {
                 Gps g = Gps.instance;
                 double fl = from.lon, fa = from.lat, tl = to.lon, ta = to.lat;
@@ -414,11 +414,11 @@ public class Mapy extends MIDlet implements CommandListener {
                     if (!g.hasFix()) {
                         if (!g.running) g.connect();
                         for (int i = 0; i < 40 && !g.hasFix(); i++) {      // up to 20 s for the first fix
-                            map.status = "Trasa: čekám na GPS (" + g.status + ")";
+                            map.status = "Route: waiting for GPS (" + g.status + ")";
                             map.repaintPanel();
                             Thread.sleep(500);
                         }
-                        if (!g.hasFix()) throw new Exception("GPS nemá polohu: " + g.status);
+                        if (!g.hasFix()) throw new Exception("GPS has no position: " + g.status);
                     }
                     if (RouteForm.isGps(from)) { fl = g.lon; fa = g.lat; }
                     if (RouteForm.isGps(to)) { tl = g.lon; ta = g.lat; }
@@ -426,11 +426,11 @@ public class Mapy extends MIDlet implements CommandListener {
                 Log.add("route " + from.title + " -> " + to.title + (car ? " car" : " foot") + (noToll ? " no toll" : ""));
                 Route r = Route.plan(fl, fa, tl, ta, car, noToll);
                 Place dest = to;
-                if (RouteForm.isGps(to)) { dest = new Place(); dest.title = "Moje poloha"; dest.lon = tl; dest.lat = ta; }
+                if (RouteForm.isGps(to)) { dest = new Place(); dest.title = "My position"; dest.lon = tl; dest.lat = ta; }
                 r.to = dest;
                 r.noToll = noToll;
                 map.marker = dest;
-                if (r.tollNote.length() > 0) map.status = "Trasa " + r.tollNote;
+                if (r.tollNote.length() > 0) map.status = "Route " + r.tollNote;
                 if (nav) {
                     map.navigating = true;
                     map.follow = true;
@@ -479,19 +479,19 @@ public class Mapy extends MIDlet implements CommandListener {
             display.setCurrent(f);
         } catch (Throwable e) {
             Log.add("showLog: " + e);
-            map.status = "Log nejde zobrazit: " + e + " (Menu: Odeslat log na PC)";
+            map.status = "Can't show the log: " + e + " (Menu: Send log to PC)";
             map.repaint();
         }
     }
 
     void sendLog() {
         new Task() {
-            String name() { return "Odeslání logu"; }
+            String name() { return "Sending the log"; }
             void work() throws Exception {
                 byte[] b = Frpc.utf8Encode(Log.all());
                 // through Net like everything else: one connection at a time
-                Net.Response r = Net.post("http://" + Settings.pc + "/results?name=mapy", "text/plain; charset=utf-8", b, "log na PC");
-                Alert a = new Alert("Log", "Odesláno: HTTP " + r.code + ", " + b.length + " B", null, AlertType.INFO);
+                Net.Response r = Net.post("http://" + Settings.pc + "/results?name=mapy", "text/plain; charset=utf-8", b, "log to PC");
+                Alert a = new Alert("Log", "Sent: HTTP " + r.code + ", " + b.length + " B", null, AlertType.INFO);
                 a.setTimeout(3000);
                 if (mapOnTop()) display.setCurrent(a, map);
             }
@@ -503,7 +503,7 @@ public class Mapy extends MIDlet implements CommandListener {
 
     /** Map type chooser (a native List: Up/Down move, Enter picks). */
     void chooseLayer() {
-        layerList = new List("Typ mapy", List.IMPLICIT);
+        layerList = new List("Map type", List.IMPLICIT);
         layerIds = new int[Layers.NAMES.length];
         int n = 0;
         for (int i = 0; i < Layers.NAMES.length; i++) {
@@ -526,7 +526,7 @@ public class Mapy extends MIDlet implements CommandListener {
             int i = sel >= 0 ? layerIds[sel] : -1;
             if (c == List.SELECT_COMMAND && i >= 0) {
                 if (Layers.needsKey(i) && Settings.mapyKey.length() == 0) {
-                    Alert a = new Alert("Typ mapy", "Mapy Mapy.com potřebují vlastní API klíč: zaregistrujte se zdarma na developer.mapy.com a zadejte klíč v Nastavení.", null, AlertType.INFO);
+                    Alert a = new Alert("Map type", "Mapy.com maps need your own API key: register for free at developer.mapy.com and enter the key in Settings.", null, AlertType.INFO);
                     a.setTimeout(Alert.FOREVER);
                     display.setCurrent(a, layerList);
                     return;

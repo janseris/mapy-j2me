@@ -14,15 +14,15 @@ public class BtSearch implements DiscoveryListener, CommandListener {
         void picked(String address);
     }
 
-    static final Command CANCEL = new Command("Zpět", Command.BACK, 1);
-    static final Command PICK = new Command("Vybrat", Command.SCREEN, 1);
+    static final Command CANCEL = new Command("Back", Command.BACK, 1);
+    static final Command PICK = new Command("Select", Command.SCREEN, 1);
 
     final Display display;
     final Displayable back;
     final Picked picked;
     final Vector devices = new Vector();
-    final Form wait = new Form("Hledám zařízení");
-    final StringItem info = new StringItem(null, "Hledám Bluetooth zařízení v okolí (asi 12 s). Na Androidu musí běžet sdílení GPS.");
+    final Form wait = new Form("Searching for devices");
+    final StringItem info = new StringItem(null, "Searching for Bluetooth devices nearby (about 12 s). GPS sharing must be running on the Android phone.");
     DiscoveryAgent agent;
     List list;
     volatile boolean done;
@@ -47,13 +47,13 @@ public class BtSearch implements DiscoveryListener, CommandListener {
             Log.add("bt inquiry start, known " + devices.size());
         } catch (Throwable e) {
             Log.add("bt inquiry: " + e);
-            final String title = Gps.btOff(e) ? "Bluetooth je vypnutý" : "Hledání selhalo";
+            final String title = Gps.btOff(e) ? "Bluetooth is off" : "Search failed";
             display.callSerially(new Runnable() {
                 public void run() { wait.setTitle(title); }
             });
-            setInfo(Gps.btOff(e) ? "Bluetooth je vypnutý. Zapni ho v telefonu (Ovládací panel → Bluetooth) a hledej znovu."
-                : "Hledání selhalo: " + e.getMessage() + "\nNení 9300 připojená přes Bluetooth k PC?");
-            if (!Gps.btOff(e) && devices.size() > 0) showList("Známá zařízení");
+            setInfo(Gps.btOff(e) ? "Bluetooth is off. Switch it on in the phone (Control panel → Bluetooth) and search again."
+                : "Search failed: " + e.getMessage() + "\nIs the 9300 connected to a PC over Bluetooth?");
+            if (!Gps.btOff(e) && devices.size() > 0) showList("Known devices");
         }
     }
 
@@ -74,18 +74,18 @@ public class BtSearch implements DiscoveryListener, CommandListener {
                 if (((RemoteDevice) devices.elementAt(i)).getBluetoothAddress().equals(d.getBluetoothAddress())) return;
             devices.addElement(d);
         }
-        setInfo("Hledám... nalezeno " + devices.size());
+        setInfo("Searching... found " + devices.size());
     }
 
     public void inquiryCompleted(int type) {
         done = true;
         Log.add("bt inquiry done " + type + ", devices " + devices.size());
         if (devices.size() == 0) {
-            setInfo((type == INQUIRY_ERROR ? "Chyba hledání. " : "Nic nenalezeno. ")
-                + "Když je 9300 připojená přes Bluetooth k PC (PC Suite), hledání nefunguje. Zkontroluj, že je Android viditelný a sdílení GPS běží.");
+            setInfo((type == INQUIRY_ERROR ? "Search error. " : "Nothing found. ")
+                + "Searching doesn't work while the 9300 is connected to a PC over Bluetooth (PC Suite). Check that the Android phone is visible and GPS sharing is running.");
             return;
         }
-        showList(type == INQUIRY_COMPLETED ? "Vyber GPS" : "Vyber GPS (přerušeno)");
+        showList(type == INQUIRY_COMPLETED ? "Choose the GPS" : "Choose the GPS (interrupted)");
     }
 
     void showList(String title) {

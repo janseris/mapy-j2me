@@ -121,36 +121,36 @@ public class Kinds {
     };
 
     static final String[] LABEL = {
-        "amenity=restaurant", "restaurace", "amenity=cafe", "kavárna", "amenity=fast_food", "rychlé občerstvení",
-        "amenity=pub", "hospoda", "amenity=biergarten", "pivní zahrádka", "amenity=bar", "bar", "amenity=wine_bar", "vinárna",
-        "amenity=ice_cream", "zmrzlina", "amenity=food_court", "jídelna", "tourism=hotel", "hotel", "tourism=hostel", "hostel",
-        "tourism=guest_house", "penzion", "tourism=apartment", "apartmán", "tourism=motel", "motel",
-        "amenity=parking", "parkoviště", "amenity=drinking_water", "pitná voda", "leisure=playground", "dětské hřiště",
-        "historic=memorial", "pomník", "historic=monument", "památník", "tourism=artwork", "umělecké dílo",
-        "amenity=place_of_worship", "kostel, modlitebna", "historic=church", "kostel", "historic=wayside_cross", "kříž",
-        "historic=wayside_shrine", "boží muka", "tourism=museum", "muzeum", "tourism=gallery", "galerie",
-        "amenity=arts_centre", "kulturní centrum", "amenity=theatre", "divadlo", "amenity=cinema", "kino",
-        "amenity=shelter", "přístřešek", "historic=fort", "pevnost", "military=bunker", "bunkr", "historic=castle", "hrad, zámek",
-        "historic=city_gate", "městská brána", "historic=building", "historická budova", "historic=ruins", "zřícenina",
-        "leisure=park", "park", "leisure=garden", "zahrada", "amenity=pharmacy", "lékárna", "amenity=hospital", "nemocnice",
-        "amenity=clinic", "poliklinika", "amenity=doctors", "lékař", "amenity=dentist", "zubař", "amenity=bank", "banka",
-        "amenity=atm", "bankomat", "amenity=post_office", "pošta", "amenity=fuel", "čerpací stanice",
-        "amenity=charging_station", "nabíjecí stanice", "shop=supermarket", "supermarket", "shop=convenience", "večerka",
-        "shop=bakery", "pekárna", "amenity=school", "škola", "amenity=university", "univerzita", "amenity=college", "vyšší škola",
-        "amenity=kindergarten", "mateřská škola", "amenity=library", "knihovna", "amenity=toilets", "WC",
-        "tourism=information", "informace", "tourism=viewpoint", "vyhlídka", "tourism=attraction", "turistický cíl",
-        "tourism=zoo", "zoo", "amenity=police", "policie", "amenity=townhall", "radnice", "amenity=bicycle_rental", "půjčovna kol",
-        "amenity=car_rental", "půjčovna aut", "shop=hairdresser", "kadeřnictví", "shop=clothes", "oblečení", "shop=shoes", "obuv",
-        "shop=florist", "květinářství", "shop=books", "knihkupectví", "shop=electronics", "elektronika", "shop=mobile_phone", "mobily",
-        "shop=optician", "optika", "shop=kiosk", "trafika", "shop=chemist", "drogerie", "shop=hardware", "železářství",
-        "shop=doityourself", "hobby market", "shop=bicycle", "kola", "shop=jewelry", "klenoty", "shop=gift", "dárky",
-        "shop=alcohol", "alkohol", "shop=wine", "víno", "shop=beverages", "nápoje", "shop=beauty", "kosmetika",
-        "shop=car_repair", "autoservis", "amenity=marketplace", "tržnice", "tourism=camp_site", "kemp", "tourism=picnic_site", "piknik",
-        "amenity=bench", "lavička", "leisure=sports_centre", "sportoviště", "leisure=fitness_centre", "fitness",
-        "leisure=swimming_pool", "bazén", "amenity=taxi", "taxi", "amenity=bus_station", "autobusové nádraží",
-        "shop=butcher", "řeznictví", "shop=greengrocer", "ovoce a zelenina", "shop=pastry", "cukrárna", "shop=confectionery", "cukrovinky",
-        "shop=toys", "hračky", "shop=sports", "sport", "shop=pet", "chovatelské potřeby", "amenity=veterinary", "veterinář",
-        "amenity=nightclub", "klub", "amenity=community_centre", "komunitní centrum"
+        "amenity=restaurant", "restaurant", "amenity=cafe", "café", "amenity=fast_food", "fast food",
+        "amenity=pub", "pub", "amenity=biergarten", "beer garden", "amenity=bar", "bar", "amenity=wine_bar", "wine bar",
+        "amenity=ice_cream", "ice cream", "amenity=food_court", "food court", "tourism=hotel", "hotel", "tourism=hostel", "hostel",
+        "tourism=guest_house", "guest house", "tourism=apartment", "apartment", "tourism=motel", "motel",
+        "amenity=parking", "parking", "amenity=drinking_water", "drinking water", "leisure=playground", "playground",
+        "historic=memorial", "memorial", "historic=monument", "monument", "tourism=artwork", "artwork",
+        "amenity=place_of_worship", "place of worship", "historic=church", "church", "historic=wayside_cross", "wayside cross",
+        "historic=wayside_shrine", "wayside shrine", "tourism=museum", "museum", "tourism=gallery", "gallery",
+        "amenity=arts_centre", "arts centre", "amenity=theatre", "theatre", "amenity=cinema", "cinema",
+        "amenity=shelter", "shelter", "historic=fort", "fort", "military=bunker", "bunker", "historic=castle", "castle",
+        "historic=city_gate", "city gate", "historic=building", "historic building", "historic=ruins", "ruins",
+        "leisure=park", "park", "leisure=garden", "garden", "amenity=pharmacy", "pharmacy", "amenity=hospital", "hospital",
+        "amenity=clinic", "clinic", "amenity=doctors", "doctor", "amenity=dentist", "dentist", "amenity=bank", "bank",
+        "amenity=atm", "ATM", "amenity=post_office", "post office", "amenity=fuel", "fuel",
+        "amenity=charging_station", "charging station", "shop=supermarket", "supermarket", "shop=convenience", "convenience store",
+        "shop=bakery", "bakery", "amenity=school", "school", "amenity=university", "university", "amenity=college", "college",
+        "amenity=kindergarten", "kindergarten", "amenity=library", "library", "amenity=toilets", "WC",
+        "tourism=information", "information", "tourism=viewpoint", "viewpoint", "tourism=attraction", "attraction",
+        "tourism=zoo", "zoo", "amenity=police", "police", "amenity=townhall", "town hall", "amenity=bicycle_rental", "bicycle rental",
+        "amenity=car_rental", "car rental", "shop=hairdresser", "hairdresser", "shop=clothes", "clothes", "shop=shoes", "shoes",
+        "shop=florist", "florist", "shop=books", "books", "shop=electronics", "electronics", "shop=mobile_phone", "mobile phones",
+        "shop=optician", "optician", "shop=kiosk", "kiosk", "shop=chemist", "chemist", "shop=hardware", "hardware",
+        "shop=doityourself", "DIY store", "shop=bicycle", "bicycles", "shop=jewelry", "jewellery", "shop=gift", "gifts",
+        "shop=alcohol", "alcohol", "shop=wine", "wine", "shop=beverages", "beverages", "shop=beauty", "beauty",
+        "shop=car_repair", "car repair", "amenity=marketplace", "marketplace", "tourism=camp_site", "camp site", "tourism=picnic_site", "picnic site",
+        "amenity=bench", "bench", "leisure=sports_centre", "sports centre", "leisure=fitness_centre", "fitness",
+        "leisure=swimming_pool", "swimming pool", "amenity=taxi", "taxi", "amenity=bus_station", "bus station",
+        "shop=butcher", "butcher", "shop=greengrocer", "greengrocer", "shop=pastry", "pastry", "shop=confectionery", "confectionery",
+        "shop=toys", "toys", "shop=sports", "sport", "shop=pet", "pet shop", "amenity=veterinary", "veterinary",
+        "amenity=nightclub", "nightclub", "amenity=community_centre", "community centre"
     };
 
     private static Image strip;
@@ -176,7 +176,7 @@ public class Kinds {
         if (l != null) return l;
         int eq = kind.indexOf('=');
         String v = eq > 0 ? kind.substring(eq + 1) : kind;
-        if (kind.startsWith("shop=")) return "obchod: " + v.replace('_', ' ');
+        if (kind.startsWith("shop=")) return "shop: " + v.replace('_', ' ');
         return v.replace('_', ' ');
     }
 

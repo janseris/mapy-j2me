@@ -47,16 +47,16 @@ public class MapyApi {
             .put("coordSystemSrc", "wgs")
             .put("count", 10)
             .put("includeNonEntityTypes", true)
-            .put("lang", "cs")
+            .put("lang", "en")
             .put("mapPoiTypeOnly", false)
             .put("position", coord(lon, lat))
             .put("stripHistoryQuery", false)
-            .put("sysLang", "cs");
+            .put("sysLang", "en");
         Vector vp = new Vector(2);
         vp.addElement(coord(view[0], view[1]));
         vp.addElement(coord(view[2], view[3]));
         p.put("viewPort", vp).put("withCategories", false).put("zoom", zoom);
-        Object o = call("suggest", new Object[] { query, p }, "hledání \"" + query + "\"");
+        Object o = call("suggest", new Object[] { query, p }, "search \"" + query + "\"");
         Vector out = new Vector();
         if (!(o instanceof FrpcStruct)) return out;
         Vector res = ((FrpcStruct) o).getArray("results");
@@ -83,10 +83,10 @@ public class MapyApi {
             .put("appName", "mapy")
             .put("coordSystemDst", "wgs")
             .put("coordSystemSrc", "wgs")
-            .put("lang", "cs")
+            .put("lang", "en")
             .put("poiStats", false)
             .put("stripHtml", true)
-            .put("sysLang", "cs")
+            .put("sysLang", "en")
             .put("version", 8);
     }
 
@@ -99,12 +99,12 @@ public class MapyApi {
     /** "What's here": detail of a map position (like a long press in the app). */
     public static FrpcStruct detailAt(double lon, double lat, int zoom) throws IOException {
         FrpcStruct p = detailParams().put("mark", coord(lon, lat)).put("zoom", zoom);
-        return detailOf(call("getDetail", new Object[] { p }, "co je tady"));
+        return detailOf(call("getDetail", new Object[] { p }, "what's here"));
     }
 
     static FrpcStruct detailOf(Object o) throws IOException {
         FrpcStruct d = o instanceof FrpcStruct ? ((FrpcStruct) o).getStruct("detail") : null;
-        if (d == null) throw new IOException("Mapy.com: žádný detail");
+        if (d == null) throw new IOException("Mapy.com: no detail");
         return d;
     }
 

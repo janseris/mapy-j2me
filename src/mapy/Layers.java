@@ -12,12 +12,12 @@ package mapy;
  */
 public class Layers {
     public static final String[] NAMES = {
-        "OpenStreetMap (základní)",
-        "OpenTopoMap (turistická, vrstevnice)",
-        "ČÚZK základní mapa ČR",
-        "ČÚZK letecká (ortofoto ČR)",
-        "Mapy.com turistická (API klíč)",
-        "Mapy.com letecká (API klíč)",
+        "OpenStreetMap (standard)",
+        "OpenTopoMap (hiking, contours)",
+        "ČÚZK base map (Czechia)",
+        "ČÚZK aerial (Czechia)",
+        "Mapy.com outdoor (API key)",
+        "Mapy.com aerial (API key)",
     };
     /** Short names for the log. */
     public static final String[] SHORT = { "osm", "otm", "cuzk-ztm", "cuzk-orto", "mapy-outdoor", "mapy-aerial" };

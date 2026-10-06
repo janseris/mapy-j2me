@@ -61,7 +61,7 @@ public class Overpass {
             + "nwr[historic]" + box + ";nwr[leisure~\"^(park|playground|garden)$\"]" + box + ";nwr[military=bunker]" + box + ";"
             + "node[amenity~\"^(drinking_water|parking|shelter|toilets|atm|charging_station)$\"]" + box + ";"
             + "way[amenity=parking]" + box + ";);out center " + MAX + ";";
-        Net.Response r = query(q, "body zájmu (OSM)");
+        Net.Response r = query(q, "places of interest (OSM)");
         if (r.code != 200) throw new IOException("Overpass HTTP " + r.code);
         return parse(Frpc.utf8Decode(r.body, 0, r.body.length));
     }

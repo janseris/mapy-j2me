@@ -47,30 +47,30 @@ public class Route {
         String note = "";
         if (car && noToll) {
             String[] ex = { "motorway,toll", "motorway", "toll" };
-            String[] names = { "bez dálnic a placených úseků", "bez dálnic (placené známkou)", "bez mýtných úseků (dálnice možné)" };
+            String[] names = { "avoiding motorways and toll roads", "avoiding motorways (vignette)", "avoiding toll roads (motorways possible)" };
             for (int i = 0; i < ex.length && (r == null || r.code != 200); i++) {
-                r = Net.get(url + "&exclude=" + Net.encode(ex[i]), "trasa autem bez placených");
+                r = Net.get(url + "&exclude=" + Net.encode(ex[i]), "car route without tolls");
                 Log.add("route exclude=" + ex[i] + ": HTTP " + r.code);
                 if (r.code == 200) note = names[i];
             }
-            if (r.code != 200) note = "server neumí vyhnout se placeným úsekům: trasa může vést po dálnici";
+            if (r.code != 200) note = "the server can't avoid toll roads: the route may use motorways";
         }
-        if (r == null || r.code != 200) r = Net.get(url, car ? "trasa autem" : "trasa pěšky");
+        if (r == null || r.code != 200) r = Net.get(url, car ? "car route" : "walking route");
         String text = Frpc.utf8Decode(r.body, 0, r.body.length);
         if (r.code != 200) {
             Log.add("route HTTP " + r.code + ": " + (text.length() > 300 ? text.substring(0, 300) : text));
-            throw new IOException("trasa: HTTP " + r.code + " " + (text.length() > 120 ? text.substring(0, 120) : text));
+            throw new IOException("route: HTTP " + r.code + " " + (text.length() > 120 ? text.substring(0, 120) : text));
         }
         Object o;
         try {
             o = Json.parse(text);
         } catch (RuntimeException e) {
             Log.add("route response unreadable (" + e + "): " + (text.length() > 300 ? text.substring(0, 300) : text));
-            throw new IOException("trasa: nečitelná odpověď (" + e + ")");
+            throw new IOException("route: unreadable response (" + e + ")");
         }
-        if (!"Ok".equals(Json.str(o, "code"))) throw new IOException("trasa: " + Json.str(o, "code") + " " + Json.str(o, "message"));
+        if (!"Ok".equals(Json.str(o, "code"))) throw new IOException("route: " + Json.str(o, "code") + " " + Json.str(o, "message"));
         Vector routes = Json.arr(o, "routes");
-        if (routes.size() == 0) throw new IOException("trasa nenalezena");
+        if (routes.size() == 0) throw new IOException("route not found");
         Hashtable rt = (Hashtable) routes.elementAt(0);
         Route route = new Route();
         route.car = car;
@@ -176,34 +176,34 @@ public class Route {
     }
 
     static String dir(String m) {
-        if (m.equals("left")) return "vlevo";
-        if (m.equals("right")) return "vpravo";
-        if (m.equals("slight left")) return "mírně vlevo";
-        if (m.equals("slight right")) return "mírně vpravo";
-        if (m.equals("sharp left")) return "ostře vlevo";
-        if (m.equals("sharp right")) return "ostře vpravo";
-        if (m.equals("uturn")) return "otočte se";
-        return "rovně";
+        if (m.equals("left")) return "left";
+        if (m.equals("right")) return "right";
+        if (m.equals("slight left")) return "slightly left";
+        if (m.equals("slight right")) return "slightly right";
+        if (m.equals("sharp left")) return "sharp left";
+        if (m.equals("sharp right")) return "sharp right";
+        if (m.equals("uturn")) return "make a U-turn";
+        return "straight on";
     }
 
-    /** Czech instruction from an OSRM step. */
+    /** English instruction from an OSRM step. */
     static String text(Step s, boolean car) {
-        String on = s.name.length() > 0 ? " na " + s.name : "";
+        String on = s.name.length() > 0 ? " onto " + s.name : "";
         String t = s.type;
-        if (t.equals("depart")) return (car ? "Vyjeďte" : "Vyjděte") + (s.name.length() > 0 ? " po " + s.name : "");
-        if (t.equals("arrive")) return "Cíl";
+        if (t.equals("depart")) return (car ? "Head off" : "Head off") + (s.name.length() > 0 ? " on " + s.name : "");
+        if (t.equals("arrive")) return "Arrive";
         if (t.equals("roundabout") || t.equals("rotary") || t.equals("roundabout turn"))
-            return "Na kruhovém objezdu " + (s.exit > 0 ? s.exit + ". výjezdem" : "vyjeďte") + on;
-        if (t.equals("exit roundabout") || t.equals("exit rotary")) return "Vyjeďte z kruhového objezdu" + on;
-        if (t.equals("merge")) return "Připojte se " + dir(s.modifier) + on;
-        if (t.equals("on ramp")) return "Najeďte " + dir(s.modifier) + on;
-        if (t.equals("off ramp")) return "Sjeďte " + dir(s.modifier) + on;
-        if (t.equals("fork")) return "Na rozcestí " + dir(s.modifier) + on;
-        if (t.equals("end of road")) return "Na konci silnice " + dir(s.modifier) + on;
-        if (s.modifier.equals("straight")) return "Pokračujte rovně" + on;
-        if (s.modifier.equals("uturn")) return "Otočte se" + on;
-        if (t.equals("new name") || t.equals("continue")) return "Pokračujte" + (s.modifier.length() > 0 && !s.modifier.equals("straight") ? " " + dir(s.modifier) : "") + on;
-        return "Odbočte " + dir(s.modifier) + on;
+            return "At the roundabout " + (s.exit > 0 ? "take exit " + s.exit : "exit") + on;
+        if (t.equals("exit roundabout") || t.equals("exit rotary")) return "Exit the roundabout" + on;
+        if (t.equals("merge")) return "Merge " + dir(s.modifier) + on;
+        if (t.equals("on ramp")) return "Take the ramp " + dir(s.modifier) + on;
+        if (t.equals("off ramp")) return "Take the exit " + dir(s.modifier) + on;
+        if (t.equals("fork")) return "At the fork keep " + dir(s.modifier) + on;
+        if (t.equals("end of road")) return "At the end of the road turn " + dir(s.modifier) + on;
+        if (s.modifier.equals("straight")) return "Continue straight on" + on;
+        if (s.modifier.equals("uturn")) return "Make a U-turn" + on;
+        if (t.equals("new name") || t.equals("continue")) return "Continue" + (s.modifier.length() > 0 && !s.modifier.equals("straight") ? " " + dir(s.modifier) : "") + on;
+        return "Turn " + dir(s.modifier) + on;
     }
 
     public static String km(double m) {

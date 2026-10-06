@@ -22,26 +22,26 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     static final int T = Geo.TILE, CACHE_MAX = 24, POI_ZOOM = 16, BAR = 26, EDGE = 12, HOVER_R = 12;
 
     // the first four go on the 9300's side buttons, top to bottom
-    static final Command SEARCH = new Command("Hledat", Command.SCREEN, 1);
-    static final Command ZOOM_IN = new Command("Přiblížit", Command.SCREEN, 2);
-    static final Command ZOOM_OUT = new Command("Oddálit", Command.SCREEN, 3);
+    static final Command SEARCH = new Command("Search", Command.SCREEN, 1);
+    static final Command ZOOM_IN = new Command("Zoom in", Command.SCREEN, 2);
+    static final Command ZOOM_OUT = new Command("Zoom out", Command.SCREEN, 3);
     static final Command MENU = new Command("Menu", Command.SCREEN, 4);
-    static final Command OPEN = new Command("Otevřít", Command.SCREEN, 4);
-    static final Command ROUTE = new Command("Trasa (odkud, kam)", Command.SCREEN, 5);
-    static final Command MYPOS = new Command("Moje poloha (GPS)", Command.SCREEN, 5);
-    static final Command FOLLOW = new Command("Sledovat polohu zap/vyp", Command.SCREEN, 5);
-    static final Command GPS = new Command("GPS připojit/odpojit", Command.SCREEN, 5);
-    static final Command NAV = new Command("Navigace start/stop", Command.SCREEN, 5);
-    static final Command CLEAR_ROUTE = new Command("Zrušit trasu", Command.SCREEN, 5);
-    static final Command NEXT = new Command("Další bod", Command.SCREEN, 5);
-    static final Command HERE = new Command("Co je tady", Command.SCREEN, 6);
-    static final Command POIS = new Command("Body zájmu zap/vyp", Command.SCREEN, 7);
-    static final Command FULL = new Command("Celá obrazovka zap/vyp", Command.SCREEN, 8);
-    static final Command RELOAD = new Command("Načíst znovu", Command.SCREEN, 9);
+    static final Command OPEN = new Command("Open", Command.SCREEN, 4);
+    static final Command ROUTE = new Command("Route (from, to)", Command.SCREEN, 5);
+    static final Command MYPOS = new Command("My position (GPS)", Command.SCREEN, 5);
+    static final Command FOLLOW = new Command("Follow position on/off", Command.SCREEN, 5);
+    static final Command GPS = new Command("GPS connect/disconnect", Command.SCREEN, 5);
+    static final Command NAV = new Command("Navigation start/stop", Command.SCREEN, 5);
+    static final Command CLEAR_ROUTE = new Command("Clear route", Command.SCREEN, 5);
+    static final Command NEXT = new Command("Next place", Command.SCREEN, 5);
+    static final Command HERE = new Command("What's here", Command.SCREEN, 6);
+    static final Command POIS = new Command("Places of interest on/off", Command.SCREEN, 7);
+    static final Command FULL = new Command("Full screen on/off", Command.SCREEN, 8);
+    static final Command RELOAD = new Command("Reload", Command.SCREEN, 9);
     static final Command LOG = new Command("Log", Command.SCREEN, 10);
-    static final Command SETTINGS = new Command("Nastavení", Command.SCREEN, 11);
+    static final Command SETTINGS = new Command("Settings", Command.SCREEN, 11);
     // SCREEN, not EXIT: the 9300 always puts an EXIT command on the bottom side button
-    static final Command EXIT = new Command("Konec", Command.SCREEN, 12);
+    static final Command EXIT = new Command("Exit", Command.SCREEN, 12);
 
     final Mapy app;
     int zoom;
@@ -217,7 +217,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (missing == 0) return false;
         int tx = bx & (max - 1);
         String k = key(z, tx, by);
-        status = "Mapa: zbývá " + missing;
+        status = "Map: tiles left " + missing;
         repaintPanel();
         try {
             // past the map type's own detail, the tile is cut out of its deepest tile and enlarged
@@ -233,7 +233,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 String from = "disk";
                 int code = 200;
                 if (body == null) {
-                    Net.Response r = Net.get(url, "dlaždice " + k);
+                    Net.Response r = Net.get(url, "tile " + k);
                     from = "net " + r.scheme + (r.helper != null ? " via helper (" + r.helper + ")" : "");
                     code = r.code;
                     if (r.code == 200) DiskCache.put(url, r.body);
@@ -261,13 +261,13 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                         for (int i = 0; i + 1 < body.length; i++) if ((body[i] & 0xff) == 0xFF && (body[i + 1] & 0xff) == 0xC2) { prog = true; break; }
                         Log.add("tile " + pk + " not decodable: " + body.length + " B, starts " + hx + (prog ? ", progressive JPEG" : ""));
                         DiskCache.remove(url);
-                        throw new IllegalArgumentException("dlaždice nejde zobrazit" + (prog ? " (progresivní JPEG)" : "") + ", " + body.length + " B");
+                        throw new IllegalArgumentException("tile can't be shown" + (prog ? " (progressive JPEG)" : "") + ", " + body.length + " B");
                     }
                 }
                 if (d > 0) { parentKey = pk; parentImage = src; }
             }
             if (src == null) {
-                failed.put(k, tileError.length() > 0 ? tileError : "chyba");
+                failed.put(k, tileError.length() > 0 ? tileError : "error");
                 noteTileError();
             } else {
                 if (tileErrors > 0) { tileErrors = 0; tileError = ""; }
@@ -314,7 +314,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         double[] v = viewBox(0);
         if (poiBox != null && v[1] >= poiBox[0] && v[0] >= poiBox[1] && v[3] <= poiBox[2] && v[2] <= poiBox[3]) return false;
         double[] g = viewBox(1.0);      // twice the view, so small moves don't need a new query
-        status = "Body zájmu...";
+        status = "Places of interest...";
         repaintPanel();
         try {
             Vector found = Overpass.pois(g[1], g[0], g[3], g[2]);
@@ -326,9 +326,9 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             repaint();
         } catch (Throwable e) {
             Log.add("POIs: " + e);
-            poiFailed = true;           // all servers failed: again in 30 s (or now with "Načíst znovu")
+            poiFailed = true;           // all servers failed: again in 30 s (or now with "Reload")
             poiRetryAt = System.currentTimeMillis() + 30000;
-            status = "Body zájmu: chyba " + e.getMessage();
+            status = "Places of interest: error " + e.getMessage();
         }
         return true;
     }
@@ -353,7 +353,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             Settings.pois = !Settings.pois;
             Settings.save();
             if (!Settings.pois) { pois = new Vector(); poiBox = null; hovered = null; }
-            status = Settings.pois ? (zoom < POI_ZOOM ? "Body zájmu od přiblížení " + POI_ZOOM : "Body zájmu zapnuty") : "Body zájmu vypnuty";
+            status = Settings.pois ? (zoom < POI_ZOOM ? "Places of interest from zoom " + POI_ZOOM : "Places of interest on") : "Places of interest off";
             viewChanged();
         }
         else if (c == FULL) toggleFullScreen();
@@ -366,7 +366,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 if (Gps.instance.hasFix()) centerOnGps();
                 else if (!Gps.instance.running) Gps.instance.connect();
             }
-            status = follow ? "Sledování polohy zapnuto" : "Sledování polohy vypnuto";
+            status = follow ? "Following position on" : "Following position off";
             repaint();
         }
         else if (c == GPS) { if (Gps.instance.running) Gps.instance.disconnect(); else Gps.instance.connect(); repaintPanel(); }
@@ -377,14 +377,14 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 if (!Gps.instance.running) Gps.instance.connect();
                 if (Settings.gpsTime > 0) {         // meanwhile, the last known position
                     center(Settings.gpsLat, Settings.gpsLon);
-                    status = "Poslední známá poloha " + age(Settings.gpsTime) + ", čekám na GPS";
+                    status = "Last known position " + age(Settings.gpsTime) + ", waiting for GPS";
                     viewChanged();
                 }
                 repaintPanel();
             }
         }
         else if (c == NAV) {
-            if (route == null) { status = "Nejdřív naplánuj trasu (detail místa: Trasa sem)"; repaintPanel(); }
+            if (route == null) { status = "Plan a route first (place detail: Route here)"; repaintPanel(); }
             else {
                 navigating = !navigating;
                 follow = navigating || Settings.follow;
@@ -441,7 +441,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         failed.clear();
         tileErrors = 0; tileError = "";
         if (zoom > Layers.maxZoom()) zoom = Layers.maxZoom();
-        status = "Mapa: " + Layers.NAMES[Layers.current()];
+        status = "Map: " + Layers.NAMES[Layers.current()];
         viewChanged();
     }
 
@@ -590,7 +590,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (down && !repeat) {
             String name = "";
             try { name = getKeyName(key); } catch (Throwable e) {}
-            lastKey = "klávesa " + key + (name != null && name.length() > 0 ? " " + name : "") + (a != 0 ? " (akce " + a + ")" : "");
+            lastKey = "key " + key + (name != null && name.length() > 0 ? " " + name : "") + (a != 0 ? " (action " + a + ")" : "");
             // arrows are too many to log (the menu is navigated with them too)
             if (a != LEFT && a != RIGHT && a != UP && a != DOWN) Log.add("key " + key + " '" + name + "' game action " + a);
         }
@@ -689,10 +689,10 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     }
 
     void calibrateKey(int key) {
-        if (key == 27) { calibrating = -1; status = "Boční tlačítka nenastavena (Menu: Nastavit boční tlačítka)"; repaint(); return; }
+        if (key == 27) { calibrating = -1; status = "Side buttons not set (Menu: Set up side buttons)"; repaint(); return; }
         for (int i = 0; i < calibrating; i++) {
             if (learned[i] == key) {
-                calibMsg = "Kód " + key + " už má " + (i + 1) + ". tlačítko. Stiskněte " + (calibrating + 1) + ". tlačítko (Esc = zrušit).";
+                calibMsg = "Code " + key + " is already button " + (i + 1) + ". Press button " + (calibrating + 1) + ". (Esc = cancel).";
                 repaint();
                 return;
             }
@@ -705,7 +705,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             calibrating = -1;
             for (int i = 0; i < 4; i++) Settings.sideKeys[i] = learned[i];
             Settings.save();
-            status = "Boční tlačítka: Hledat, Přiblížit, Oddálit, Menu";
+            status = "Side buttons: Search, Zoom in, Zoom out, Menu";
         }
         repaint();
     }
@@ -725,20 +725,20 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         g.drawRect(x0, y0, bw - 1, bh - 1);
         g.setFont(b);
         g.setColor(0xFFFFFF);
-        String[] names = { "horní (Hledat)", "2. (Přiblížit)", "3. (Oddálit)", "dolní (Menu)" };
-        g.drawString("Stiskněte " + names[calibrating] + " boční tlačítko", x0 + 8, y0 + 6, Graphics.TOP | Graphics.LEFT);
+        String[] names = { "the top (Search)", "the 2nd (Zoom in)", "the 3rd (Zoom out)", "the bottom (Menu)" };
+        g.drawString("Press " + names[calibrating] + " side button", x0 + 8, y0 + 6, Graphics.TOP | Graphics.LEFT);
         g.setFont(f);
         g.setColor(0xDBDEE1);
         String t = calibMsg.length() > 0 ? calibMsg
-            : "Nastavení bočních tlačítek vpravo (" + (calibrating + 1) + " ze 4), shora dolů. Esc = zrušit.";
+            : "Setting up the side buttons on the right (" + (calibrating + 1) + " of 4), top to bottom. Esc = cancel.";
         wrap(g, f, t, x0 + 8, y0 + 10 + b.getHeight(), bw - 16, 4);
     }
 
     // ---------------------------------------------------------------- our menu
 
-    static final Command LAYER = new Command("Typ mapy", Command.SCREEN, 6);
-    static final Command SIDE_KEYS = new Command("Nastavit boční tlačítka", Command.SCREEN, 11);
-    static final Command SEND_LOG = new Command("Odeslat log na PC", Command.SCREEN, 10);
+    static final Command LAYER = new Command("Map type", Command.SCREEN, 6);
+    static final Command SIDE_KEYS = new Command("Set up side buttons", Command.SCREEN, 11);
+    static final Command SEND_LOG = new Command("Send log to PC", Command.SCREEN, 10);
     static final Command[] MENU_ITEMS = { OPEN, SEARCH, ROUTE, MYPOS, LAYER, SETTINGS, ZOOM_IN, ZOOM_OUT, FOLLOW, GPS, NAV,
         CLEAR_ROUTE, NEXT, HERE, POIS, FULL, RELOAD, SEND_LOG, LOG, SIDE_KEYS, EXIT };
     volatile boolean menuOpen;
@@ -813,12 +813,12 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     String menuLabel(Command c) {
         String l;
-        if (c == FOLLOW) l = "Sledovat polohu";
-        else if (c == GPS) l = "GPS přes Bluetooth";
-        else if (c == NAV) l = "Navigace";
-        else if (c == POIS) l = "Body zájmu";
-        else if (c == FULL) l = "Celá obrazovka";
-        else if (c == MYPOS) l = "Moje poloha";
+        if (c == FOLLOW) l = "Follow position";
+        else if (c == GPS) l = "GPS over Bluetooth";
+        else if (c == NAV) l = "Navigation";
+        else if (c == POIS) l = "Places of interest";
+        else if (c == FULL) l = "Full screen";
+        else if (c == MYPOS) l = "My position";
         else l = c.getLabel();
         String k = shortcutOf(c);
         if (c == ZOOM_IN) k = "+";
@@ -974,7 +974,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         hovered = objectAt(mx, my, HOVER_R);
         if (hovered != before) hoverChanged(hovered);
         if (panned) {
-            if (follow) status = "Sledování vypnuto (Menu: Moje poloha)";
+            if (follow) status = "Following off (Menu: My position)";
             follow = false;
             viewChanged();
         } else if (hovered != before) {
@@ -1038,7 +1038,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         initCursor();
         Vector all = objects(), vis = new Vector();
         for (int i = 0; i < all.size(); i++) if (onScreen((Place) all.elementAt(i))) vis.addElement(all.elementAt(i));
-        if (vis.size() == 0) { status = zoom < POI_ZOOM ? "Přibliž na " + POI_ZOOM + " pro body zájmu" : "Žádné body"; repaintPanel(); return; }
+        if (vis.size() == 0) { status = zoom < POI_ZOOM ? "Zoom in to " + POI_ZOOM + " for places of interest" : "No places"; repaintPanel(); return; }
         for (int i = 0; i < vis.size(); i++) {
             int m = i;
             for (int j = i + 1; j < vis.size(); j++) if (dist2((Place) vis.elementAt(j)) < dist2((Place) vis.elementAt(m))) m = j;
@@ -1159,7 +1159,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                         g.fillRect(px + 1, py + 1, T - 2, T - 2);
                         g.setColor(0xB71C1C);
                         g.setFont(small());
-                        wrap(g, small(), "Dlaždice se nenačetla: " + why, px + 6, py + 6, T - 12, 4);
+                        wrap(g, small(), "Tile not loaded: " + why, px + 6, py + 6, T - 12, 4);
                     }
                 }
             }
@@ -1225,13 +1225,13 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         g.fillTriangle(ex + 1, ey - 16, ex + 11, ey - 12, ex + 1, ey - 8);
     }
 
-    /** "před 3 min" for the last known position. */
+    /** "3 min ago" for the last known position. */
     static String age(long t) {
         long s = (System.currentTimeMillis() - t) / 1000;
-        if (s < 60) return "před " + s + " s";
-        if (s < 3600) return "před " + s / 60 + " min";
-        if (s < 86400) return "před " + s / 3600 + " h";
-        return "před " + s / 86400 + " dny";
+        if (s < 60) return s + " s ago";
+        if (s < 3600) return s / 60 + " min ago";
+        if (s < 86400) return s / 3600 + " h ago";
+        return s / 86400 + " days ago";
     }
 
     void paintGps(Graphics g, int ox, int oy) {
@@ -1275,7 +1275,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         g.fillTriangle(tx, ty, rx, ry, nx, ny);
     }
 
-    static final String[] DIRS = { "S", "SV", "V", "JV", "J", "JZ", "Z", "SZ" };
+    static final String[] DIRS = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
 
     static String direction(double course) {
         int i = (int) ((course + 22.5) / 45) & 7;
@@ -1432,7 +1432,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         g.setFont(f);
         if (tileErrors > 0) {
             g.setColor(0xEE6C6C);
-            y = wrap(g, f, "Chyba mapy (" + tileErrors + "x): " + tileError, 3, y, tw, 3);
+            y = wrap(g, f, "Map error (" + tileErrors + "x): " + tileError, 3, y, tw, 3);
         }
         String prog = Net.progressText();
         if (prog.length() > 0) {
@@ -1452,24 +1452,24 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                     double to = rt.along[st.index] - routeAt;
                     g.setFont(b);
                     g.setColor(0xFFFFFF);
-                    y = wrap(g, b, (to > 15 ? "Za " + Route.km(to) + ": " : "") + st.text, 3, y, tw, 3);
+                    y = wrap(g, b, (to > 15 ? "In " + Route.km(to) + ": " : "") + st.text, 3, y, tw, 3);
                     g.setFont(f);
                 }
                 double rest = rt.distance - routeAt;
                 g.setColor(0xB5BAC1);
-                y = wrap(g, f, rest < 25 ? "Jste v cíli" : "Zbývá " + Route.km(rest) + ", " + Route.time(rt.duration * rest / Math.max(1, rt.distance)), 3, y, tw, 2);
-                if (offRoute > (rt.car ? 50 : 30)) { g.setColor(0xEE6C6C); y = wrap(g, f, "Mimo trasu (" + (int) offRoute + " m)", 3, y, tw, 1); }
+                y = wrap(g, f, rest < 25 ? "You have arrived" : "Remaining " + Route.km(rest) + ", " + Route.time(rt.duration * rest / Math.max(1, rt.distance)), 3, y, tw, 2);
+                if (offRoute > (rt.car ? 50 : 30)) { g.setColor(0xEE6C6C); y = wrap(g, f, "Off route (" + (int) offRoute + " m)", 3, y, tw, 1); }
             } else {
                 g.setColor(0xFFFFFF);
-                y = wrap(g, f, (rt.car ? "Autem " : "Pěšky ") + Route.km(rt.distance) + ", " + Route.time(rt.duration), 3, y, tw, 2);
+                y = wrap(g, f, (rt.car ? "By car " : "On foot ") + Route.km(rt.distance) + ", " + Route.time(rt.duration), 3, y, tw, 2);
                 g.setColor(0x80848E);
-                y = wrap(g, f, navigating ? "Čekám na GPS: " + gp.status : "Menu: Navigace start", 3, y, tw, 2);
+                y = wrap(g, f, navigating ? "Waiting for GPS: " + gp.status : "Menu: Navigation start", 3, y, tw, 2);
             }
             y += 3;
         } else if (Gps.instance.running && !Gps.instance.hasFix()) {
             g.setColor(0x80848E);
             y = wrap(g, f, "GPS: " + Gps.instance.status, 3, y, tw, 2);
-            if (Settings.gpsTime > 0) y = wrap(g, f, "Šedá tečka = poslední poloha " + age(Settings.gpsTime), 3, y, tw, 2);
+            if (Settings.gpsTime > 0) y = wrap(g, f, "Grey dot = last position " + age(Settings.gpsTime), 3, y, tw, 2);
         }
         Gps gq = Gps.instance;
         if (gq.hasFix()) {
@@ -1480,16 +1480,16 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             g.drawString((int) (gq.speedKmh + 0.5) + " km/h", 32, y, Graphics.TOP | Graphics.LEFT);
             g.setFont(f);
             g.setColor(0xB5BAC1);
-            g.drawString(gq.speedKmh > 2 ? direction(gq.course) : "stojím", 32, y + b.getHeight(), Graphics.TOP | Graphics.LEFT);
+            g.drawString(gq.speedKmh > 2 ? direction(gq.course) : "standing", 32, y + b.getHeight(), Graphics.TOP | Graphics.LEFT);
             y += Math.max(28, b.getHeight() + fh) + 1;
             SpeedLimit sl = SpeedLimit.instance;
             if (Settings.speedLimits && sl.limit > 0) {
                 boolean over = gq.speedKmh > sl.limit + 0.5;
                 g.setColor(over ? 0xEE6C6C : 0xB5BAC1);
-                y = wrap(g, f, "Limit " + sl.limit + (sl.implied ? " (odhad)" : "") + (over ? " - PŘEKROČENO" : "") + (sl.road.length() > 0 ? ", " + sl.road : ""), 3, y, tw, 2);
+                y = wrap(g, f, "Limit " + sl.limit + (sl.implied ? " (estimate)" : "") + (over ? " - OVER" : "") + (sl.road.length() > 0 ? ", " + sl.road : ""), 3, y, tw, 2);
             }
             g.setColor(follow ? 0x8AB4F8 : 0x80848E);
-            y = wrap(g, f, follow ? "Sledování polohy: zap" : "Sledování: vyp (Moje poloha)", 3, y, tw, 1);
+            y = wrap(g, f, follow ? "Following position: on" : "Following: off (My position)", 3, y, tw, 1);
             y += 3;
         }
         Place hov = hovered;
@@ -1518,12 +1518,12 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 }
             }
             g.setColor(0x80848E);
-            y = wrap(g, f, "Enter = otevřít", 3, y, tw, 1);
+            y = wrap(g, f, "Enter = open", 3, y, tw, 1);
         } else {
             g.setColor(0x80848E);
             String help = Settings.pois && zoom < POI_ZOOM
-                ? "Body zájmu od přiblížení " + POI_ZOOM + ". Enter = co je tady."
-                : "Enter = otevřít, H = hledat, T = trasa, P = moje poloha, M = typ mapy, N = další bod. Menu (Tab) ukazuje všechny klávesy." + (Settings.akce ? " (nebo 4. boční tlačítko)" : "");
+                ? "Places of interest from zoom " + POI_ZOOM + ". Enter = what's here."
+                : "Enter = open, H = search, T = route, P = my position, M = map type, N = next place. Menu (Tab) shows all keys." + (Settings.akce ? " (or the 4th side button)" : "");
             y = wrap(g, f, help, 3, y, tw, 4);
         }
         // bottom: last key (for finding Chr+arrow codes), zoom, credits
@@ -1532,7 +1532,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         g.setColor(0x80848E);
         if (lastKey.length() > 0 && by - fh > y) g.drawString(clip(f, lastKey, tw), 3, by - fh, Graphics.TOP | Graphics.LEFT);
         g.setColor(0xB5BAC1);
-        g.drawString("Zoom " + zoom + (zoom > Layers.nativeZoom() ? " (zvětšeno)" : ""), 3, by, Graphics.TOP | Graphics.LEFT);
+        g.drawString("Zoom " + zoom + (zoom > Layers.nativeZoom() ? " (enlarged)" : ""), 3, by, Graphics.TOP | Graphics.LEFT);
         g.drawString(Layers.credit(0), 3, by + fh, Graphics.TOP | Graphics.LEFT);
         if (creditLines > 1) g.drawString(Layers.credit(1), 3, by + 2 * fh, Graphics.TOP | Graphics.LEFT);
     }

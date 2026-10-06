@@ -20,7 +20,7 @@ public class Gps implements Runnable, DiscoveryListener {
     static final UUID SPP = new UUID(0x1101);
 
     public volatile Listener listener;
-    public volatile String status = "vypnuto";
+    public volatile String status = "off";
     public volatile boolean running, fix;
     public volatile double lat, lon, speedKmh, course;
     public volatile long lastFix;
@@ -47,12 +47,12 @@ public class Gps implements Runnable, DiscoveryListener {
     public void disconnect() {
         running = false;
         try { if (conn != null) conn.close(); } catch (Throwable e) {}   // our own BT stream, safe to close
-        status = "vypnuto";
+        status = "off";
         fix = false;
         notifyListener();
     }
 
-    public static final String BT_OFF = "Bluetooth je vypnutý: zapni ho v telefonu (Ovládací panel → Bluetooth), pak G";
+    public static final String BT_OFF = "Bluetooth is off: switch it on in the phone (Control panel → Bluetooth), then G";
 
     /**
      * Bluetooth switched off: the 9300 throws BluetoothStateException or an IOException with
@@ -78,20 +78,20 @@ public class Gps implements Runnable, DiscoveryListener {
     public void run() {
         String addr = clean(Settings.btAddress);
         if (addr.length() != 12) {
-            setStatus("zadej adresu Bluetooth GPS v Nastavení");
+            setStatus("enter the Bluetooth GPS address in Settings");
             running = false;
             return;
         }
         try {
             Vector urls = new Vector();
-            setStatus("hledám službu GPS na " + addr + "...");
+            setStatus("looking for the GPS service on " + addr + "...");
             serviceUrl = null;
             // The SPP service isn't always listed at once (right after a disconnect the Android app
             // may need a moment to offer it again): search up to 4 times before giving up.
             for (int attempt = 1; attempt <= 4 && serviceUrl == null && running; attempt++) {
                 searchResp = 0;
                 if (attempt > 1) {
-                    setStatus("služba GPS zatím nenalezena, zkouším znovu (" + attempt + "/4)...");
+                    setStatus("GPS service not found yet, trying again (" + attempt + "/4)...");
                     try { Thread.sleep(3000); } catch (InterruptedException e) {}
                 }
                 try {
@@ -122,14 +122,14 @@ public class Gps implements Runnable, DiscoveryListener {
             else if (searchResp == SERVICE_SEARCH_NO_RECORDS) {
                 // the phone answers but offers no serial port service; trying channels blindly only
                 // connects to some other service that sends nothing (seen: channel 2)
-                setStatus("Android nenabízí sdílení GPS: zkontrolujte GPS NMEA Tether (zapnout znovu)");
+                setStatus("The Android phone offers no GPS sharing: check GPS NMEA Tether (switch it on again)");
                 running = false;
                 return;
             }
             for (int ch = 1; ch <= 10; ch++) urls.addElement("btspp://" + addr + ":" + ch + ";authenticate=false;encrypt=false;master=false");
             for (int i = 0; i < urls.size() && running && conn == null; i++) {
                 String url = (String) urls.elementAt(i);
-                setStatus("připojuji " + (i == 0 && serviceUrl != null ? "službu GPS" : "kanál " + url.substring(21, url.indexOf(';'))));
+                setStatus("connecting " + (i == 0 && serviceUrl != null ? "the GPS service" : "channel " + url.substring(21, url.indexOf(';'))));
                 try {
                     while (running) {                                   // not while HTTP runs (see next())
                         synchronized (Net.COMMS) { if (!Net.commsBusy()) { inCall = true; break; } }
@@ -147,14 +147,14 @@ public class Gps implements Runnable, DiscoveryListener {
                 }
             }
             if (conn == null) {
-                setStatus("nepřipojeno: běží na Androidu sdílení GPS? Není 9300 připojená přes Bluetooth k PC?");
+                setStatus("not connected: is GPS sharing running on the Android phone? Is the 9300 connected to a PC over Bluetooth?");
                 running = false;
                 return;
             }
-            setStatus("připojeno, čekám na polohu");
+            setStatus("connected, waiting for a position");
             read(conn.openInputStream());
         } catch (Throwable e) {
-            if (running) setStatus(btOff(e) ? BT_OFF : "chyba: " + e.getMessage());
+            if (running) setStatus(btOff(e) ? BT_OFF : "error: " + e.getMessage());
         } finally {
             try { if (conn != null) conn.close(); } catch (Throwable e) {}
             conn = null;
@@ -241,7 +241,7 @@ public class Gps implements Runnable, DiscoveryListener {
             if (!hasFix() && t - lastDiag > 2000) {
                 // no position yet: say what arrives, so "waiting" can be told apart from "nothing comes"
                 lastDiag = t;
-                status = bytes + " B, " + lines + " vět" + (lines > 0 ? ", bez polohy: GPS v Androidu ještě nemá fix?" : "") + (lastLine.length() > 0 ? " (" + lastLine + ")" : "");
+                status = bytes + " B, " + lines + " sentences" + (lines > 0 ? ", no position: the Android GPS has no fix yet?" : "") + (lastLine.length() > 0 ? " (" + lastLine + ")" : "");
                 if ((t - started) % 10000 < 2100) Log.add("gps diag: " + status + ", bad " + badLines);
                 notifyListener();
             }
@@ -274,7 +274,7 @@ public class Gps implements Runnable, DiscoveryListener {
                 line.append((char) ch);
             }
         }
-        if (running) setStatus("spojení ukončeno");
+        if (running) setStatus("connection closed");
     }
 
     public void servicesDiscovered(int t, ServiceRecord[] recs) {

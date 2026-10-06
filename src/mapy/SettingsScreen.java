@@ -7,27 +7,27 @@ import javax.microedition.lcdui.*;
  * groups take the Up/Down keys (popups change their value, radio lists move inside the group),
  * so the other fields couldn't be reached. Here Up/Down only move between rows; Enter opens a
  * row: a choice opens its own list of values, a text opens the editor. Nothing changes until
- * "Uložit"; leaving with changes asks whether to save them.
+ * "Save"; leaving with changes asks whether to save them.
  */
 public class SettingsScreen implements CommandListener {
-    static final Command SAVE = new Command("Uložit", Command.SCREEN, 1);
-    static final Command BT_SEARCH = new Command("Hledat GPS zařízení", Command.SCREEN, 2);
-    static final Command CLEAR_CACHE = new Command("Smazat mezipaměť", Command.SCREEN, 3);
-    static final Command BACK = new Command("Zpět", Command.BACK, 4);
-    static final Command DONE = new Command("Hotovo", Command.SCREEN, 1);
-    static final Command DISCARD = new Command("Neukládat", Command.SCREEN, 2);
-    static final Command STAY = new Command("Zpět do nastavení", Command.BACK, 3);
+    static final Command SAVE = new Command("Save", Command.SCREEN, 1);
+    static final Command BT_SEARCH = new Command("Find GPS device", Command.SCREEN, 2);
+    static final Command CLEAR_CACHE = new Command("Clear cache", Command.SCREEN, 3);
+    static final Command BACK = new Command("Back", Command.BACK, 4);
+    static final Command DONE = new Command("Done", Command.SCREEN, 1);
+    static final Command DISCARD = new Command("Don't save", Command.SCREEN, 2);
+    static final Command STAY = new Command("Back to settings", Command.BACK, 3);
 
     static final int[] CACHE_MB = { 0, 4, 8, 16, 32, 48 };
     static final int[] PANEL_WIDTHS = { 110, 130, 150, 180, 210, 240 };
-    static final String[] ON_OFF = { "zapnuto", "vypnuto" };
+    static final String[] ON_OFF = { "on", "off" };
 
     // rows
     static final int PANEL = 0, CACHE = 1, PREVIEW = 2, BT = 3, GPS_AUTO = 4, FOLLOW = 5, LIMITS = 6, HTTP = 7,
         AKCE = 8, KEY = 9, PC = 10, UA = 11, LINK = 12, HELPER = 13, ABOUT = 14, ROWS = 15;
-    static final String[] NAMES = { "Šířka levého panelu", "Mezipaměť v telefonu", "Náhled při najetí kurzorem",
-        "Bluetooth GPS (adresa)", "Připojit GPS při spuštění", "Mapa sleduje polohu", "Rychlostní limity při jízdě",
-        "Veřejná data přes HTTP", "Menu Akce telefonu", "Mapy.com API klíč", "PC pro log", "User-Agent", "Připojení k internetu", "Net Helper (rychlejší stahování)", "Zdroje dat a licence" };
+    static final String[] NAMES = { "Left panel width", "Cache in the phone", "Preview under the cursor",
+        "Bluetooth GPS (address)", "Connect GPS at start", "Map follows position", "Speed limits while driving",
+        "Public data over HTTP", "Phone's Akce menu", "Mapy.com API key", "PC for the log", "User-Agent", "Internet connection", "Net Helper (faster downloads)", "Data sources and licences" };
 
     final Mapy app;
     final Display display;
@@ -74,13 +74,13 @@ public class SettingsScreen implements CommandListener {
         }
         if (r == CACHE) {
             String[] s = new String[CACHE_MB.length];
-            for (int i = 0; i < s.length; i++) s[i] = CACHE_MB[i] == 0 ? "vypnuto" : CACHE_MB[i] + " MB";
+            for (int i = 0; i < s.length; i++) s[i] = CACHE_MB[i] == 0 ? "off" : CACHE_MB[i] + " MB";
             return s;
         }
-        if (r == LINK) return new String[] { "automaticky (" + (Net.usbLink() ? "teď: pauzy" : "teď: bez pauz") + ")",
-            "USB z PC (IP passthrough): krátké pauzy", "GPRS / jiné: bez pauz" };
-        if (r == HELPER) return new String[] { "použít, když běží (" + Net.helperText() + ")", "nepoužívat" };
-        if (r == AKCE) return new String[] { "zapnuto (šipky v něm hýbou mapou)", "vypnuto (menu mapy: Tab)" };
+        if (r == LINK) return new String[] { "automatic (" + (Net.usbLink() ? "now: pauses" : "now: no pauses") + ")",
+            "USB from a PC (IP passthrough): short pauses", "GPRS / other: no pauses" };
+        if (r == HELPER) return new String[] { "use when running (" + Net.helperText() + ")", "don't use" };
+        if (r == AKCE) return new String[] { "on (its arrows move the map)", "off (map menu: Tab)" };
         return ON_OFF;
     }
 
@@ -88,8 +88,8 @@ public class SettingsScreen implements CommandListener {
         if (r == ABOUT) return "";
         if (isText(r)) {
             String t = text[r];
-            if (r == KEY && t.length() > 0) return "zadán";
-            return t.length() == 0 ? "(prázdné)" : t;
+            if (r == KEY && t.length() > 0) return "set";
+            return t.length() == 0 ? "(empty)" : t;
         }
         return optionsOf(r)[choice[r]];
     }
@@ -101,7 +101,7 @@ public class SettingsScreen implements CommandListener {
     }
 
     void show() {
-        list = new List("Nastavení", List.IMPLICIT);
+        list = new List("Settings", List.IMPLICIT);
         for (int r = 0; r < ROWS; r++) list.append(NAMES[r] + (r == ABOUT ? "" : ": " + value(r)), null);
         list.setSelectedIndex(row, true);
         // four commands: all on the 9300's side buttons
@@ -116,9 +116,9 @@ public class SettingsScreen implements CommandListener {
     void open(int r) {
         row = r;
         if (r == ABOUT) {
-            Alert a = new Alert("Zdroje dat", "Mapy: © OpenStreetMap contributors (openstreetmap.org/copyright), OpenTopoMap (CC-BY-SA), © ČÚZK. "
-                + "Body zájmu, limity, radary: OpenStreetMap přes Overpass API. Trasy: OSRM na serveru FOSSGIS (routing.openstreetmap.de). "
-                + "Chyba v mapě? openstreetmap.org/fixthemap. Hledání, detaily, fotky a ikony: Mapy.com.", null, AlertType.INFO);
+            Alert a = new Alert("Data sources", "Maps: © OpenStreetMap contributors (openstreetmap.org/copyright), OpenTopoMap (CC-BY-SA), © ČÚZK. "
+                + "Places of interest, speed limits, cameras: OpenStreetMap via the Overpass API. Routes: OSRM on the FOSSGIS server (routing.openstreetmap.de). "
+                + "Error in the map? openstreetmap.org/fixthemap. Search, details, photos and icons: Mapy.com.", null, AlertType.INFO);
             a.setTimeout(Alert.FOREVER);
             display.setCurrent(a, list);
         } else if (isText(r)) {
@@ -169,7 +169,7 @@ public class SettingsScreen implements CommandListener {
 
     void leave() {
         if (state().equals(initial)) { app.showMap(); return; }
-        unsaved = new Alert("Neuložené změny", "Nastavení se změnilo. Uložit změny?", null, AlertType.CONFIRMATION);
+        unsaved = new Alert("Unsaved changes", "Settings have changed. Save the changes?", null, AlertType.CONFIRMATION);
         unsaved.setTimeout(Alert.FOREVER);
         unsaved.addCommand(SAVE);
         unsaved.addCommand(DISCARD);
@@ -191,7 +191,7 @@ public class SettingsScreen implements CommandListener {
                 DiskCache.clear();
                 Photos.images.clear();
                 app.details.clear();
-                Alert a = new Alert("Mezipaměť", "Smazáno.", null, AlertType.INFO);
+                Alert a = new Alert("Cache", "Cleared.", null, AlertType.INFO);
                 a.setTimeout(2000);
                 display.setCurrent(a, list);
             } else leave();

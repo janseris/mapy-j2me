@@ -16,9 +16,9 @@ inspired by the Mapy.com Android app.
   (arrows = next). Photos come from Seznam's image servers in a size that fits the screen
   (`?fl=res,,<height>,3`).
 - **Hover preview:** when the cursor rests on an object for a second, the panel shows its Mapy.com
-  rating and a small photo (can be switched off in Nastavení; costs a few requests per object).
+  rating and a small photo (can be switched off in Settings; costs a few requests per object).
 - **Caching:** map tiles and photos are kept in an LRU cache in the phone's record store (RMS, no
-  permission prompts), 16 MB by default, set in Nastavení (0–48 MB, "Smazat mezipaměť"). Entries
+  permission prompts), 16 MB by default, set in Settings (0–48 MB, "Clear cache"). Entries
   older than 30 days are fetched again. In memory: the last 24 tiles, 12 photos and 40 Mapy.com details.
 - **Search:** Mapy.com suggestions (`vectmap.mapy.cz/rpc`, FastRPC `suggest`) near the map view;
   the chosen result gets a red pin.
@@ -26,20 +26,20 @@ inspired by the Mapy.com Android app.
 - **What's here:** Mapy.com detail of the map centre.
 
 - **Bluetooth GPS:** position from a Bluetooth GPS receiver or an Android phone sharing its GPS as
-  NMEA over Bluetooth (address in Nastavení; Menu → GPS připojit). Blue dot with heading; "Moje
-  poloha" follows it.
-- **Routes and navigation (walking and car):** detail of a place → "Trasa sem pěšky / autem", from the
+  NMEA over Bluetooth (address in Settings; Menu → GPS connect). Blue dot with heading; "My
+  position" follows it.
+- **Routes and navigation (walking and car):** detail of a place → "Route here on foot / by car", from the
   GPS position (or, without GPS, from the map cursor). The route comes from OSRM on the FOSSGIS server
   (`routing.openstreetmap.de`, OpenStreetMap data: full line + turn steps; max 1 request/s, no heavy
-  use). Menu → "Navigace start": the map follows the GPS, the panel shows the next instruction in Czech
-  ("Za 80 m: Odbočte vlevo na Křížkovského"), the remaining distance and time; off the route (30 m on
+  use). Menu → "Navigation start": the map follows the GPS, the panel shows the next instruction
+  ("In 80 m: Turn left onto Křížkovského"), the remaining distance and time; off the route (30 m on
   foot, 50 m by car, 3 fixes in a row) it recalculates, at most every 15 s. Mapy.com's own routes can't
   be used for this yet: their full line is in an encoded format; see `../mapy/ANALYSIS.md`.
 
 ## Controls
 
 Full screen: an info panel on the left (progress, status, the object under the cursor, zoom,
-credits; width set in Nastavení), the map, and a thin icon bar on the right that labels the four
+credits; width set in Settings), the map, and a thin icon bar on the right that labels the four
 side buttons (in full screen the phone doesn't draw their labels). The map has a Windows-XP-style mouse cursor. The 9300's Java has no
 pointer events, so the navigation key drives it: it moves while held (time-based speed that
 accelerates, so the 9300's coarse timer doesn't make it jerky), diagonally when two directions are
@@ -48,12 +48,12 @@ held, and at the edge of the map the map scrolls.
 | Key | Action |
 |---|---|
 | Navigation key / arrows | move the cursor; the map scrolls at the edge |
-| Side buttons (top to bottom) | Hledat, Přiblížit, Oddálit, Otevřít; more in the menu |
+| Side buttons (top to bottom) | Search, Zoom in, Zoom out, Menu (set up once: Menu → Set up side buttons) |
 | `+` / `-` (also `3` / `1`) | zoom in / out around the cursor |
 | Enter / navigation key press | click: open the object under the cursor, or "what's here" at the cursor |
 | `N` / space | jump the cursor to the next object on screen |
 | `0` | full screen on/off |
-| letters | start a search with that letter |
+| letters | shortcuts (H search, T route, P my position, M map type, S follow, G GPS, V navigation, …); Tab opens the menu, which lists them |
 
 Objects under the cursor are highlighted like a link (blue ring, underlined label, name in the
 panel). The panel shows the code of the last key pressed, and every key is logged. Chr + Up/Down can't

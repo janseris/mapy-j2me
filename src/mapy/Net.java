@@ -87,7 +87,7 @@ public class Net {
         if (!busy) return "";
         long s = (System.currentTimeMillis() - lastActivity) / 1000;
         return what + ": " + phase + (bytes > 0 ? " " + (bytes / 1024) + " KB" : "") + (s > 1 ? " (" + s + " s)" : "")
-            + (attempt > 1 ? ", pokus " + attempt : "");
+            + (attempt > 1 ? ", attempt " + attempt : "");
     }
 
     /**
@@ -128,9 +128,9 @@ public class Net {
     }
 
     public static String helperText() {
-        if (helperState == 1) return "běží, přes něj " + helperOk + ", na otevřeném spojení " + helperReused;
-        if (helperState == 2) return "neběží";
-        return "zatím nezkoušeno";
+        if (helperState == 1) return "running, through it " + helperOk + ", on an open connection " + helperReused;
+        if (helperState == 2) return "not running";
+        return "not tried yet";
     }
 
     /** The start of a small text response (error pages), for the log. */
@@ -225,7 +225,7 @@ public class Net {
                     if (System.currentTimeMillis() - lastActivity > STALL_MS) {
                         Log.add(label + ": no progress for " + (STALL_MS / 1000) + " s in '" + phase + "', abandoned (attempt " + attempt + ")");
                         a.abandoned = true;
-                        last = new IOException("server neodpovídá");
+                        last = new IOException("server not responding");
                         break;
                     }
                 }
@@ -256,7 +256,7 @@ public class Net {
                     last = a.error;
                 }
             }
-            throw last != null ? last : new IOException("chyba spojení");
+            throw last != null ? last : new IOException("connection error");
         } finally {
             busy = false;
             phase = "";
@@ -315,7 +315,7 @@ public class Net {
             InputStream in = null;
             OutputStream out = null;
             try {
-                phase("připojování", 0);
+                phase("connecting", 0);
                 if (viaHelper) {
                     // the helper sends exactly one User-Agent (ours), so no duplicate as with the phone's
                     c = (HttpConnection) Connector.open(HELPER + encode(url));
@@ -334,7 +334,7 @@ public class Net {
                     out.close();
                     out = null;
                 }
-                phase("čekám na server", 0);
+                phase("waiting for the server", 0);
                 Response r = new Response();
                 r.scheme = url.startsWith("https") ? "https" : "http";
                 r.code = c.getResponseCode();
@@ -349,11 +349,11 @@ public class Net {
                 ByteArrayOutputStream o = new ByteArrayOutputStream(len > 0 ? len : 8192);
                 byte[] buf = new byte[2048];
                 int n, total = 0;
-                phase("stahování", 0);
+                phase("downloading", 0);
                 while ((n = in.read(buf)) > 0) {
                     o.write(buf, 0, n);
                     total += n;
-                    phase("stahování", total);
+                    phase("downloading", total);
                     if (len > 0 && total >= len) break;
                 }
                 r.body = o.toByteArray();

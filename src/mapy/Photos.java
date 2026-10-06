@@ -85,7 +85,7 @@ public class Photos {
             for (int i = 0; i + 1 < b.length; i++) if ((b[i] & 0xff) == 0xFF && (b[i + 1] & 0xff) == 0xC2) { progressive = true; break; }
             Log.add("photo not decodable: " + b.length + " B, starts " + h + (progressive ? ", progressive JPEG" : "") + ", " + url);
             DiskCache.remove(url);
-            throw new IllegalArgumentException("obrázek nejde dekódovat" + (progressive ? " (progresivní JPEG)" : "") + ", " + b.length + " B");
+            throw new IllegalArgumentException("image can't be decoded" + (progressive ? " (progressive JPEG)" : "") + ", " + b.length + " B");
         }
         images.put(url, im);
         return im;

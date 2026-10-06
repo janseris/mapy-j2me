@@ -157,8 +157,8 @@ public class DiskCache {
     }
 
     public static synchronized String summary() {
-        if (!open()) return "nedostupná";
-        return index.size() + " položek, " + (total / 1024) + " KB z " + Settings.cacheMB + " MB";
+        if (!open()) return "unavailable";
+        return index.size() + " items, " + (total / 1024) + " KB of " + Settings.cacheMB + " MB";
     }
 
     /** Disk-cached HTTP GET (only 200 responses are stored). */

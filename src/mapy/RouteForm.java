@@ -4,13 +4,13 @@ import javax.microedition.lcdui.*;
 
 /**
  * Route planning form: Odkud, Kam (each opens a PlacePicker, like the pubtran app's search,
- * with "Moje poloha" in both), then the options and "Naplánovat". Up/Down choose a row, Enter
+ * with "Moje poloha" in both), then the options and "Plan". Up/Down choose a row, Enter
  * opens / toggles it, left/right toggle options.
  */
 public class RouteForm extends Canvas implements CommandListener {
-    static final Command PLAN = new Command("Naplánovat", Command.SCREEN, 1);
-    static final Command SWAP = new Command("Prohodit", Command.SCREEN, 2);
-    static final Command BACK = new Command("Zpět", Command.BACK, 3);
+    static final Command PLAN = new Command("Plan", Command.SCREEN, 1);
+    static final Command SWAP = new Command("Swap", Command.SCREEN, 2);
+    static final Command BACK = new Command("Back", Command.BACK, 3);
 
     static final int FROM = 0, TO = 1, MODE = 2, TOLL = 3, NAV = 4, GO = 5, ROWS = 6;
 
@@ -21,7 +21,7 @@ public class RouteForm extends Canvas implements CommandListener {
 
     RouteForm(Mapy app) {
         this.app = app;
-        setTitle("Trasa");
+        setTitle("Route");
         addCommand(PLAN); addCommand(SWAP); addCommand(BACK);
         setCommandListener(this);
     }
@@ -32,19 +32,19 @@ public class RouteForm extends Canvas implements CommandListener {
 
     String label(int row) {
         switch (row) {
-            case FROM: return "Odkud:  " + (from == null ? "(vyberte)" : from.title);
-            case TO: return "Kam:  " + (to == null ? "(vyberte)" : to.title);
-            case MODE: return "Způsob:  " + (car ? "autem" : "pěšky");
-            case TOLL: return car ? "Placené úseky:  " + (noToll ? "bez placených úseků" : "s placenými úseky") : "Placené úseky:  (jen autem)";
-            case NAV: return "Pak spustit navigaci:  " + (startNav ? "ano" : "ne") + (isGps(from) ? "" : " (jen z Moje poloha)");
-            default: return "Naplánovat trasu";
+            case FROM: return "From:  " + (from == null ? "(choose)" : from.title);
+            case TO: return "To:  " + (to == null ? "(choose)" : to.title);
+            case MODE: return "Mode:  " + (car ? "by car" : "on foot");
+            case TOLL: return car ? "Toll roads:  " + (noToll ? "avoid" : "allow") : "Toll roads:  (car only)";
+            case NAV: return "Then start navigation:  " + (startNav ? "yes" : "no") + (isGps(from) ? "" : " (only from My position)");
+            default: return "Plan the route";
         }
     }
 
     void activate(int row) {
         if (row == FROM || row == TO) {
             final boolean f = row == FROM;
-            app.display.setCurrent(new PlacePicker(app, f ? "Odkud" : "Kam", this, new PlacePicker.Picked() {
+            app.display.setCurrent(new PlacePicker(app, f ? "From" : "To", this, new PlacePicker.Picked() {
                 public void picked(Place p) {
                     if (f) from = p; else to = p;
                     if (f && to == null) sel = TO;
