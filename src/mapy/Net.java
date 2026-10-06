@@ -235,7 +235,11 @@ public class Net {
         try {
             IOException last = null;
             boolean direct = false;
-            for (attempt = 1; attempt <= ATTEMPTS; attempt++) {
+            // Overpass: one try with a longer wait. It answers slowly or with 504 when busy, and three
+            // 15 s tries per server held every map tile back for minutes (one request at a time).
+            boolean slow = host(url).indexOf("overpass") >= 0;
+            int attempts = slow ? 1 : ATTEMPTS, stallMs = slow ? 30000 : STALL_MS;
+            for (attempt = 1; attempt <= attempts; attempt++) {
                 boolean viaHelper = !direct && useHelper(body);
                 Attempt a = new Attempt(url, contentType, body, label, viaHelper);
                 lastActivity = System.currentTimeMillis();
@@ -243,8 +247,8 @@ public class Net {
                 while (!a.done) {
                     try { Thread.sleep(250); } catch (InterruptedException e) {}
                     notifyListener();
-                    if (System.currentTimeMillis() - lastActivity > STALL_MS) {
-                        Log.add(label + ": no progress for " + (STALL_MS / 1000) + " s in '" + phase + "', abandoned (attempt " + attempt + ")");
+                    if (System.currentTimeMillis() - lastActivity > stallMs) {
+                        Log.add(label + ": no progress for " + (stallMs / 1000) + " s in '" + phase + "', abandoned (attempt " + attempt + ")");
                         a.abandoned = true;
                         last = new IOException("server not responding");
                         break;

@@ -440,8 +440,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             rebuildPois(r);
         } catch (Throwable e) {
             Log.add("POIs: " + e);
-            poiFailed = true;           // all servers failed: again in 30 s (or now with "Reload")
-            poiRetryAt = System.currentTimeMillis() + 30000;
+            poiFailed = true;           // all servers failed: again in 2 min (or now with "Reload"); tiles go first
+            poiRetryAt = System.currentTimeMillis() + 120000;
             status = "Places of interest: error " + e.getMessage();
         }
         return true;

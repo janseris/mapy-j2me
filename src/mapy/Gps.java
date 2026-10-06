@@ -83,7 +83,15 @@ public class Gps implements Runnable, DiscoveryListener {
             return;
         }
         try {
-            Vector urls = new Vector();
+          // The Android app's serial port service changes its channel when it restarts (seen 5, 6, 7,
+          // 27...), so a found channel can already be gone (-34): then search again. No blind channel
+          // tries: they connected to other services that send nothing, and each failed Bluetooth
+          // connect blocked the Java comms layer (and every map download) for about a minute.
+          for (int round = 1; round <= 3 && conn == null && running; round++) {
+            if (round > 1) {
+                setStatus("the GPS service didn't answer, searching again (" + round + "/3)...");
+                try { Thread.sleep(2000); } catch (InterruptedException e) {}
+            }
             setStatus("looking for the GPS service on " + addr + "...");
             serviceUrl = null;
             // The SPP service isn't always listed at once (right after a disconnect the Android app
@@ -118,36 +126,32 @@ public class Gps implements Runnable, DiscoveryListener {
                 }
                 if (searchResp != SERVICE_SEARCH_NO_RECORDS) break;     // found, or the phone isn't reachable
             }
-            if (serviceUrl != null) urls.addElement(serviceUrl);
-            else if (searchResp == SERVICE_SEARCH_NO_RECORDS) {
-                // the phone answers but offers no serial port service; trying channels blindly only
-                // connects to some other service that sends nothing (seen: channel 2)
-                setStatus("The Android phone offers no GPS sharing: check GPS NMEA Tether (switch it on again)");
+            if (serviceUrl == null) {
+                setStatus(searchResp == SERVICE_SEARCH_NO_RECORDS
+                    ? "The Android phone offers no GPS sharing: check GPS NMEA Tether (switch it on again)"
+                    : "not connected: is GPS sharing running on the Android phone? Is the 9300 connected to a PC over Bluetooth?");
                 running = false;
                 return;
             }
-            for (int ch = 1; ch <= 10; ch++) urls.addElement("btspp://" + addr + ":" + ch + ";authenticate=false;encrypt=false;master=false");
-            for (int i = 0; i < urls.size() && running && conn == null; i++) {
-                String url = (String) urls.elementAt(i);
-                setStatus("connecting " + (i == 0 && serviceUrl != null ? "the GPS service" : "channel " + url.substring(21, url.indexOf(';'))));
-                try {
-                    while (running) {                                   // not while HTTP runs (see next())
-                        synchronized (Net.COMMS) { if (!Net.commsBusy()) { inCall = true; break; } }
-                        Thread.sleep(100);
-                    }
-                    try { conn = (StreamConnection) Connector.open(url); } finally { inCall = false; }
-                } catch (InterruptedException e) {
-                } catch (IOException e) {
-                    Log.add("gps " + url + ": " + e);
-                    if (btOff(e)) {
-                        setStatus(BT_OFF);
-                        running = false;
-                        return;
-                    }
+            setStatus("connecting the GPS service");
+            try {
+                while (running) {                                   // not while HTTP runs (see next())
+                    synchronized (Net.COMMS) { if (!Net.commsBusy()) { inCall = true; break; } }
+                    Thread.sleep(100);
+                }
+                try { conn = (StreamConnection) Connector.open(serviceUrl); } finally { inCall = false; }
+            } catch (InterruptedException e) {
+            } catch (IOException e) {
+                Log.add("gps " + serviceUrl + ": " + e);
+                if (btOff(e)) {
+                    setStatus(BT_OFF);
+                    running = false;
+                    return;
                 }
             }
+          }
             if (conn == null) {
-                setStatus("not connected: is GPS sharing running on the Android phone? Is the 9300 connected to a PC over Bluetooth?");
+                if (running) setStatus("not connected: the GPS service didn't answer. Switch GPS sharing on the Android phone off and on, then G");
                 running = false;
                 return;
             }

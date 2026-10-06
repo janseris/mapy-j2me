@@ -27,21 +27,25 @@ public class Overpass {
     public static Net.Response query(String q, String label) throws IOException {
         IOException last = null;
         Net.Response r = null;
-        for (int i = 0; i < SERVERS.length; i++) {
-            int s = (good + i) % SERVERS.length;
+        int tried = 0, start = good;
+        for (int i = 0; i < SERVERS.length && tried < 2; i++) {    // at most 2 servers per round: tiles wait meanwhile
+            int s = (start + i) % SERVERS.length;
             if (HELPER_ONLY[s] && !Net.helperRunning()) continue;
+            tried++;
             try {
                 r = Net.get(SERVERS[s] + Net.encode(q), label);
                 if (r.code == 200) {
-                    if (s != good) Log.add("Overpass: using " + Net.host(SERVERS[s]));
+                    if (s != start) Log.add("Overpass: using " + Net.host(SERVERS[s]));
                     good = s;
                     return r;
                 }
                 if (r.code == 400) return r;                     // our query's fault: no point elsewhere
-                Log.add("Overpass " + Net.host(SERVERS[s]) + ": HTTP " + r.code + ", trying the next server");
+                Log.add("Overpass " + Net.host(SERVERS[s]) + ": HTTP " + r.code);
+                if (r.code >= 500) good = (s + 1) % SERVERS.length;     // next round starts with another one
             } catch (IOException e) {
                 last = e;
-                Log.add("Overpass " + Net.host(SERVERS[s]) + ": " + e + ", trying the next server");
+                Log.add("Overpass " + Net.host(SERVERS[s]) + ": " + e);
+                good = (s + 1) % SERVERS.length;
             }
         }
         if (r != null) return r;
