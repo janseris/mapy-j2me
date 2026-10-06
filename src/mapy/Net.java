@@ -231,7 +231,9 @@ public class Net {
         }
         what = label;
         String shown = masked(url);
-        Log.add("NET start " + label + ": " + (shown.length() > 90 ? shown.substring(0, 90) + "..." : shown));
+        // our own helper on this phone (GPS polled every second): not through /fetch, not logged
+        boolean local = url.startsWith("http://127.0.0.1");
+        if (!local) Log.add("NET start " + label + ": " + (shown.length() > 90 ? shown.substring(0, 90) + "..." : shown));
         try {
             IOException last = null;
             boolean direct = false;
@@ -240,7 +242,7 @@ public class Net {
             boolean slow = host(url).indexOf("overpass") >= 0;
             int attempts = slow ? 1 : ATTEMPTS, stallMs = slow ? 30000 : STALL_MS;
             for (attempt = 1; attempt <= attempts; attempt++) {
-                boolean viaHelper = !direct && useHelper(body);
+                boolean viaHelper = !direct && !local && useHelper(body);
                 Attempt a = new Attempt(url, contentType, body, label, viaHelper);
                 lastActivity = System.currentTimeMillis();
                 a.start();
@@ -386,7 +388,7 @@ public class Net {
                 r.body = o.toByteArray();
                 r.ms = System.currentTimeMillis() - t0;
                 if (abandoned) return;
-                Log.add(label + ": HTTP " + r.code + ", " + r.body.length + " B " + r.type + ", response " + (tResp - t0)
+                if (!url.startsWith("http://127.0.0.1")) Log.add(label + ": HTTP " + r.code + ", " + r.body.length + " B " + r.type + ", response " + (tResp - t0)
                     + " ms, total " + r.ms + " ms" + (attempt > 1 ? ", attempt " + attempt : "")
                     + (viaHelper ? ", via helper: " + r.helper + (r.helperError != null ? " ERROR " + r.helperError : "") : ""));
                 response = r;

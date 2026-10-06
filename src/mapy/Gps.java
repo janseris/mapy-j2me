@@ -82,6 +82,14 @@ public class Gps implements Runnable, DiscoveryListener {
             running = false;
             return;
         }
+        // Net Helper reads the Bluetooth GPS natively when it runs: Java's own Bluetooth reading
+        // slowed every download to seconds and crashed jes-java-comms (Probe 3.5)
+        if (Settings.helper == 0 && viaHelper(addr)) {
+            running = false;
+            fix = false;
+            notifyListener();
+            return;
+        }
         try {
           // The Android app's serial port service changes its channel when it restarts (seen 5, 6, 7,
           // 27...), so a found channel can already be gone (-34): then search again. No blind channel
@@ -168,6 +176,89 @@ public class Gps implements Runnable, DiscoveryListener {
         }
     }
 
+    /** True while the GPS comes from Net Helper (Java does no Bluetooth then). */
+    public volatile boolean fromHelper;
+
+    /**
+     * Polls Net Helper's /gps about once a second and feeds the new NMEA sentences in. False when
+     * Net Helper doesn't answer at the start (then Java reads the GPS itself as before).
+     */
+    boolean viaHelper(String addr) {
+        String url = "http://127.0.0.1:8123/gps?addr=" + addr;
+        String lastGga = "", lastRmc = "", lastState = "";
+        int fails = 0;
+        boolean answered = false;
+        bytes = lines = badLines = 0;
+        lastLine = "";
+        while (running) {
+            long t0 = System.currentTimeMillis();
+            try {
+                Net.Response r = Net.get(url, "gps");
+                if (r.code != 200) throw new IOException("HTTP " + r.code);
+                if (!answered) { answered = true; fromHelper = true; Log.add("gps: read by Net Helper"); }
+                fails = 0;
+                String text = Frpc.utf8Decode(r.body, 0, r.body.length);
+                String state = "", info = "";
+                int age = -1, st = 0;
+                while (st < text.length()) {
+                    int e = text.indexOf('\n', st);
+                    if (e < 0) e = text.length();
+                    String ln = text.substring(st, e).trim();
+                    st = e + 1;
+                    if (ln.startsWith("state=")) state = ln.substring(6);
+                    else if (ln.startsWith("info=")) info = ln.substring(5);
+                    else if (ln.startsWith("age=")) { try { age = Integer.parseInt(ln.substring(4)); } catch (Throwable x) {} }
+                    else if (ln.startsWith("$")) {
+                        boolean gga = ln.indexOf("GGA,") == 3;
+                        if (gga ? ln.equals(lastGga) : ln.equals(lastRmc)) continue;   // nothing new
+                        if (gga) lastGga = ln; else lastRmc = ln;
+                        bytes += ln.length() + 2;
+                        if (age >= 0 && age < 10000) line(ln);
+                    }
+                }
+                if (!state.equals(lastState)) { lastState = state; Log.add("gps (Net Helper): " + state + ", " + info); }
+                if (state.equals("btoff")) status = BT_OFF;
+                else if (!hasFix()) status = "Net Helper: " + info + (age >= 0 ? ", last data " + age / 1000 + " s ago" : "");
+                notifyListener();
+            } catch (Throwable e) {
+                if (!answered) { Log.add("gps: Net Helper not answering (" + e + "), Java reads the GPS"); return false; }
+                if (++fails >= 5) setStatus("Net Helper stopped answering: " + e.getMessage());
+            }
+            long wait = 1000 - (System.currentTimeMillis() - t0);
+            if (wait > 50) try { Thread.sleep(wait); } catch (InterruptedException e) {}
+        }
+        try { Net.get("http://127.0.0.1:8123/gps?stop=1", "gps stop"); } catch (Throwable e) {}
+        fromHelper = false;
+        return true;
+    }
+
+    long lastUi, lastTrack;
+
+    /** One NMEA sentence (from Bluetooth or Net Helper). */
+    void line(String ln) {
+        lines++;
+        lastLine = ln.length() > 6 ? ln.substring(0, 6) + (ln.indexOf(",A,") > 0 ? " A" : ln.indexOf(",V,") > 0 ? " V" : "") : ln;
+        if (lines <= 5) Log.add("gps line: " + ln);
+        if (Nmea.parse(ln)) {
+            lat = Nmea.lat;
+            lon = Nmea.lon;
+            speedKmh = Nmea.speedKmh;
+            course = Nmea.course;
+            lastFix = System.currentTimeMillis();
+            Settings.gpsLat = lat;
+            Settings.gpsLon = lon;
+            Settings.gpsTime = lastFix;
+            if (!fix) { fix = true; status = "position OK"; Log.add("gps first fix after " + bytes + " B, " + lines + " lines"); }
+            long now = System.currentTimeMillis();
+            if (now - lastUi > 500) { lastUi = now; notifyListener(); }
+            if (now - lastTrack > 30000) {      // a track point in the log every 30 s
+                lastTrack = now;
+                Log.add("gps " + Geo.format(lat, lon) + " " + (int) speedKmh + " km/h " + (int) course + "° sats " + Nmea.sats + " hdop " + Nmea.hdop + ", " + lines + " lines, " + bytes / 1024 + " KB" + (fromHelper ? ", via Net Helper" : ", max backlog " + maxAvail + " B"));
+                maxAvail = 0;
+            }
+        }
+    }
+
     // Reading the Bluetooth stream on the 9300 (see probe 1.7-2.1): read(byte[512]) crashed with
     // E32USER-CBase 40 and single-byte read() with KERN-EXEC 3 under a full NMEA stream. Reading
     // exactly what available() reports, with the GPS sending only GGA + RMC at 1 Hz, ran stable
@@ -228,7 +319,7 @@ public class Gps implements Runnable, DiscoveryListener {
         rpos = rlen = zeroAvail = 0;
         availBroken = false;
         StringBuffer line = new StringBuffer();
-        long lastUi = 0, lastTrack = 0, started = System.currentTimeMillis(), lastDiag = started;
+        long started = System.currentTimeMillis(), lastDiag = started;
         bytes = lines = badLines = 0;
         lastLine = "";
         int ch, eofs = 0;
@@ -251,28 +342,7 @@ public class Gps implements Runnable, DiscoveryListener {
             }
             if (ch == '\n' || ch == '\r') {
                 if (line.length() == 0) continue;
-                lines++;
-                String ln = line.toString();
-                lastLine = ln.length() > 6 ? ln.substring(0, 6) + (ln.indexOf(",A,") > 0 ? " A" : ln.indexOf(",V,") > 0 ? " V" : "") : ln;
-                if (lines <= 5) Log.add("gps line: " + ln);
-                if (Nmea.parse(ln)) {
-                    lat = Nmea.lat;
-                    lon = Nmea.lon;
-                    speedKmh = Nmea.speedKmh;
-                    course = Nmea.course;
-                    lastFix = System.currentTimeMillis();
-                    Settings.gpsLat = lat;
-                    Settings.gpsLon = lon;
-                    Settings.gpsTime = lastFix;
-                    if (!fix) { fix = true; status = "poloha OK"; Log.add("gps first fix after " + bytes + " B, " + lines + " lines"); }
-                    long now = System.currentTimeMillis();
-                    if (now - lastUi > 500) { lastUi = now; notifyListener(); }
-                    if (now - lastTrack > 30000) {      // a track point in the log every 30 s
-                        lastTrack = now;
-                        Log.add("gps " + Geo.format(lat, lon) + " " + (int) speedKmh + " km/h " + (int) course + "° sats " + Nmea.sats + " hdop " + Nmea.hdop + ", " + lines + " lines, " + bytes / 1024 + " KB, max backlog " + maxAvail + " B");
-                        maxAvail = 0;
-                    }
-                }
+                line(line.toString());
                 line.setLength(0);
             } else if (line.length() < 200) {
                 line.append((char) ch);
