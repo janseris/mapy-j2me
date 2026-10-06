@@ -1,5 +1,6 @@
 package mapy;
 
+import java.util.Enumeration;
 import java.util.Hashtable;
 import java.util.Vector;
 import javax.microedition.lcdui.*;
@@ -50,8 +51,17 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     final Vector tileOrder = new Vector();
     final Hashtable failed = new Hashtable();       // "z/x/y" -> Boolean, not retried until reload
 
-    Vector pois = new Vector();                     // Place (osm)
-    double[] poiBox;                                // s, w, n, e of the last POI query
+    Vector pois = new Vector();                     // Place (osm): the cells around the view
+    /**
+     * Places of interest by cells (the z15 tile grid, ~0.8 km at 50°N): each cell is downloaded once
+     * and kept in the phone's cache (DiskCache, "poi15:x/y", the Overpass CSV lines), so panning
+     * back and revisiting cost nothing. Missing cells of the view are fetched together in one query.
+     */
+    static final int CELL_Z = 15, CELLS_MAX = 40, CELLS_PER_QUERY = 6, CELL_CAP = 400;
+    final Hashtable poiCells = new Hashtable();     // "x/y" -> Vector of Place
+    final Vector poiCellOrder = new Vector();
+    String poiRange = "";                           // the cell range pois was built for
+    boolean poiSingle;                              // a several-cell query hit the cap: one cell at a time
     boolean poiFailed;
     long poiRetryAt;            // after a failure, try again from this time (not hammering the servers)
     Place marker;                                   // search result / detail position
@@ -303,27 +313,131 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         return true;
     }
 
+    static String poiDiskKey(String cell) { return "poi" + CELL_Z + ":" + cell; }
+
+    /** The cell range of the view (with a margin): { x0, y0, x1, y1 }. */
+    int[] poiCellRange() {
+        double[] v = viewBox(0.5);      // west, south, east, north
+        return new int[] {
+            (int) (Geo.lonToX(v[0], CELL_Z) / T), (int) (Geo.latToY(v[3], CELL_Z) / T),
+            (int) (Geo.lonToX(v[2], CELL_Z) / T), (int) (Geo.latToY(v[1], CELL_Z) / T) };
+    }
+
+    /** pois = the places of the loaded cells in the range. */
+    void rebuildPois(int[] r) {
+        Vector all = new Vector();
+        for (int x = r[0]; x <= r[2]; x++)
+            for (int y = r[1]; y <= r[3]; y++) {
+                Vector c = (Vector) poiCells.get(x + "/" + y);
+                if (c != null) for (int i = 0; i < c.size(); i++) all.addElement(c.elementAt(i));
+            }
+        pois = all;
+        poiRange = r[0] + "," + r[1] + "," + r[2] + "," + r[3];
+        nextIndex = 0;
+        hovered = objectAt(mx, my, HOVER_R);
+        repaint();
+    }
+
+    void putCell(String key, Vector places) {
+        poiCells.put(key, places);
+        poiCellOrder.removeElement(key);
+        poiCellOrder.addElement(key);
+        while (poiCellOrder.size() > CELLS_MAX) {
+            poiCells.remove(poiCellOrder.elementAt(0));
+            poiCellOrder.removeElementAt(0);
+        }
+    }
+
     /** Loads the POIs for the view when needed. False when there's nothing to do. */
     boolean loadPois() {
         if (!Settings.pois || zoom < POI_ZOOM) return false;
         if (poiFailed) {
             if (System.currentTimeMillis() < poiRetryAt) return false;
             poiFailed = false;
-            poiBox = null;
         }
-        double[] v = viewBox(0);
-        if (poiBox != null && v[1] >= poiBox[0] && v[0] >= poiBox[1] && v[3] <= poiBox[2] && v[2] <= poiBox[3]) return false;
-        double[] g = viewBox(1.0);      // twice the view, so small moves don't need a new query
+        int[] r = poiCellRange();
+        // the missing cells, nearest to the view's centre first
+        double ccx = cx / T / (double) (1 << (zoom - CELL_Z)), ccy = cy / T / (double) (1 << (zoom - CELL_Z));
+        Vector missing = new Vector();
+        Vector dist = new Vector();
+        for (int x = r[0]; x <= r[2]; x++)
+            for (int y = r[1]; y <= r[3]; y++) {
+                if (poiCells.containsKey(x + "/" + y)) continue;
+                double d = (x + 0.5 - ccx) * (x + 0.5 - ccx) + (y + 0.5 - ccy) * (y + 0.5 - ccy);
+                int at = 0;
+                while (at < dist.size() && ((Double) dist.elementAt(at)).doubleValue() <= d) at++;
+                missing.insertElementAt(new int[] { x, y }, at);
+                dist.insertElementAt(new Double(d), at);
+            }
+        String range = r[0] + "," + r[1] + "," + r[2] + "," + r[3];
+        if (missing.size() == 0) {
+            if (!range.equals(poiRange)) rebuildPois(r);
+            return false;
+        }
+        // 1. from the phone's cache
+        int fromDisk = 0;
+        for (int i = missing.size() - 1; i >= 0; i--) {
+            int[] c = (int[]) missing.elementAt(i);
+            String key = c[0] + "/" + c[1];
+            byte[] b = DiskCache.get(poiDiskKey(key));
+            if (b == null) continue;
+            putCell(key, Overpass.parse(Frpc.utf8Decode(b, 0, b.length)));
+            missing.removeElementAt(i);
+            fromDisk++;
+        }
+        if (fromDisk > 0) {
+            Log.add("POIs: " + fromDisk + " cells from the phone's cache");
+            rebuildPois(r);
+            return true;
+        }
+        // 2. the nearest missing cells in one Overpass query (their bounding box)
+        int k = poiSingle ? 1 : Math.min(CELLS_PER_QUERY, missing.size());
+        int bx0 = Integer.MAX_VALUE, by0 = Integer.MAX_VALUE, bx1 = -1, by1 = -1;
+        Hashtable want = new Hashtable();
+        for (int i = 0; i < k; i++) {
+            int[] c = (int[]) missing.elementAt(i);
+            bx0 = Math.min(bx0, c[0]); by0 = Math.min(by0, c[1]); bx1 = Math.max(bx1, c[0]); by1 = Math.max(by1, c[1]);
+        }
+        // every cell inside that box comes with the answer anyway: keep them all
+        for (int x = bx0; x <= bx1; x++) for (int y = by0; y <= by1; y++) want.put(x + "/" + y, new StringBuffer());
+        double bw = Geo.xToLon(bx0 * T, CELL_Z), be = Geo.xToLon((bx1 + 1) * T, CELL_Z);
+        double bn = Geo.yToLat(by0 * T, CELL_Z), bs = Geo.yToLat((by1 + 1) * T, CELL_Z);
         status = "Places of interest...";
         repaintPanel();
         try {
-            Vector found = Overpass.pois(g[1], g[0], g[3], g[2]);
-            pois = found;
-            poiBox = new double[] { g[1], g[0], g[3], g[2] };
-            nextIndex = 0;
-            Log.add("POIs: " + found.size());
-            hovered = objectAt(mx, my, HOVER_R);
-            repaint();
+            long t0 = System.currentTimeMillis();
+            String csv = Overpass.csv(bs, bw, bn, be, CELL_CAP);
+            int lines = 0, start = 0;
+            while (start < csv.length()) {
+                int end = csv.indexOf('\n', start);
+                if (end < 0) end = csv.length();
+                String line = csv.substring(start, end);
+                start = end + 1;
+                String[] f = Overpass.split(line, '|');
+                if (f.length < 5) continue;
+                lines++;
+                try {
+                    double la = Double.parseDouble(f[2]), lo = Double.parseDouble(f[3]);
+                    StringBuffer sb = (StringBuffer) want.get((int) (Geo.lonToX(lo, CELL_Z) / T) + "/" + (int) (Geo.latToY(la, CELL_Z) / T));
+                    if (sb != null) sb.append(line).append('\n');
+                } catch (Throwable ex) {}
+            }
+            if (lines >= CELL_CAP && want.size() > 1) {
+                // too many for one answer: the rest would be missing; one cell per query from now on
+                Log.add("POIs: " + want.size() + " cells hit the limit of " + CELL_CAP + ", one cell at a time");
+                poiSingle = true;
+                return true;
+            }
+            for (Enumeration en = want.keys(); en.hasMoreElements();) {
+                String key = (String) en.nextElement();
+                String text = want.get(key).toString();
+                DiskCache.put(poiDiskKey(key), Frpc.utf8Encode(text.length() == 0 ? "#\n" : text));
+                putCell(key, Overpass.parse(text));
+            }
+            Log.add("POIs: " + lines + " in " + want.size() + " cells, " + csv.length() + " B, " + (System.currentTimeMillis() - t0) + " ms"
+                + (lines >= CELL_CAP ? " (limit reached)" : ""));
+            if ("Places of interest...".equals(status)) status = "";
+            rebuildPois(r);
         } catch (Throwable e) {
             Log.add("POIs: " + e);
             poiFailed = true;           // all servers failed: again in 30 s (or now with "Reload")
@@ -352,7 +466,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         else if (c == POIS) {
             Settings.pois = !Settings.pois;
             Settings.save();
-            if (!Settings.pois) { pois = new Vector(); poiBox = null; hovered = null; }
+            if (!Settings.pois) { pois = new Vector(); poiRange = ""; hovered = null; }
             status = Settings.pois ? (zoom < POI_ZOOM ? "Places of interest from zoom " + POI_ZOOM : "Places of interest on") : "Places of interest off";
             viewChanged();
         }
@@ -399,7 +513,13 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             failed.clear();
             tileErrors = 0; tileError = "";
             poiFailed = false;
-            poiBox = null;
+            poiSingle = false;
+            // places too: forget the view's cells, here and in the phone's cache
+            int[] pr = poiCellRange();
+            for (int x = pr[0]; x <= pr[2]; x++) for (int y = pr[1]; y <= pr[3]; y++) DiskCache.remove(poiDiskKey(x + "/" + y));
+            poiCells.clear();
+            poiCellOrder.removeAllElements();
+            poiRange = "";
             viewChanged();
         }
         else if (c == LOG) app.showLog();

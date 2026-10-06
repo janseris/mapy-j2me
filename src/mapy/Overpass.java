@@ -52,6 +52,11 @@ public class Overpass {
 
     /** south, west, north, east */
     public static Vector pois(double s, double w, double n, double e) throws IOException {
+        return parse(csv(s, w, n, e, MAX));
+    }
+
+    /** The POIs of a box as Overpass CSV lines (type|id|lat|lon|tags...), at most max of them. */
+    public static String csv(double s, double w, double n, double e, int max) throws IOException {
         String box = "(" + Geo.fmt(s, 5) + "," + Geo.fmt(w, 5) + "," + Geo.fmt(n, 5) + "," + Geo.fmt(e, 5) + ")";
         StringBuffer cols = new StringBuffer("::type,::id,::lat,::lon");
         for (int i = 0; i < TAGS.length; i++) cols.append(',').append(TAGS[i]);
@@ -60,10 +65,10 @@ public class Overpass {
             + "nwr[name][amenity]" + box + ";nwr[name][shop]" + box + ";nwr[name][tourism]" + box + ";"
             + "nwr[historic]" + box + ";nwr[leisure~\"^(park|playground|garden)$\"]" + box + ";nwr[military=bunker]" + box + ";"
             + "node[amenity~\"^(drinking_water|parking|shelter|toilets|atm|charging_station)$\"]" + box + ";"
-            + "way[amenity=parking]" + box + ";);out center " + MAX + ";";
+            + "way[amenity=parking]" + box + ";);out center " + max + ";";
         Net.Response r = query(q, "places of interest (OSM)");
         if (r.code != 200) throw new IOException("Overpass HTTP " + r.code);
-        return parse(Frpc.utf8Decode(r.body, 0, r.body.length));
+        return Frpc.utf8Decode(r.body, 0, r.body.length);
     }
 
     static Vector parse(String text) {

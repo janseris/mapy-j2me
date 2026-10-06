@@ -9,7 +9,9 @@ inspired by the Mapy.com Android app.
 - **Points of interest overlay** (from zoom 16): restaurants, cafés, pubs, accommodation, parking,
   drinking water, playgrounds, monuments, churches, bells, museums, galleries, theatres, shelters,
   bunkers, city gates, parks, shops and services. Positions and types come from OpenStreetMap
-  (Overpass API); they are drawn with the **Mapy.com map icons** (`res/poi_icons16.png`, made from the
+  (Overpass API), loaded by cells of the z15 tile grid (~0.8 km): the view's missing cells in one query,
+  each cell then kept in the phone's cache (30 days), so panning back or revisiting needs no request
+  (*Reload* fetches the view's cells again); they are drawn with the **Mapy.com map icons** (`res/poi_icons16.png`, made from the
   icons the Mapy.com app loads from `api.mapy.cz/poiimg/icon`). A click opens the same place in
   Mapy.com (search by name nearby, then `getDetail`); without a match it shows the OSM data.
 - **Photos:** the detail shows the place's main photo; "Fotky (N)" opens a full-screen gallery
