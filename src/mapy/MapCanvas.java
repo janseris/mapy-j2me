@@ -234,7 +234,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 int code = 200;
                 if (body == null) {
                     Net.Response r = Net.get(url, "dlaždice " + k);
-                    from = "net " + r.scheme;
+                    from = "net " + r.scheme + (r.helper != null ? " via helper (" + r.helper + ")" : "");
                     code = r.code;
                     if (r.code == 200) DiskCache.put(url, r.body);
                     else {

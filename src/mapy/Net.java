@@ -50,6 +50,10 @@ public class Net {
         public long ms;
         /** "http" or "https": what the request really used. */
         public String scheme = "";
+        /** Through Net Helper: its X-Helper header (conn=reused|new, timings); null when direct. */
+        public String helper;
+        /** Net Helper's own failure (X-Helper-Error), with its HTTP 502. */
+        public String helperError;
     }
 
     /** Something to repaint when the progress changes. */
@@ -103,6 +107,30 @@ public class Net {
         hostMode.put("routing.openstreetmap.de", "http");
         // ...or redirects to HTTPS
         hostMode.put("tile.openstreetmap.org", "https");
+    }
+
+    /**
+     * Net Helper 9300: a native app on this phone (nethelper9300 repo). GET requests go through
+     * http://127.0.0.1:8123/fetch?u=<URL> when it runs; it keeps its HTTP/HTTPS connections to the
+     * servers open, so a tile costs ~100-300 ms there instead of a new TCP (+ TLS) connection each
+     * time (Probe 3.2, 2026-10). Not running (connection refused): direct requests, and another
+     * try after HELPER_RETRY_MS. Its own failure (502 + X-Helper-Error): that request again directly.
+     */
+    static final String HELPER = "http://127.0.0.1:8123/fetch?u=";
+    static final long HELPER_RETRY_MS = 30000;
+    static volatile int helperState;            // 0 not tried yet, 1 running, 2 not running
+    static volatile long helperDownAt;
+    public static volatile int helperOk, helperReused, helperFailed;
+
+    static boolean useHelper(byte[] body) {
+        if (Settings.helper != 0 || body != null) return false;
+        return helperState != 2 || System.currentTimeMillis() - helperDownAt > HELPER_RETRY_MS;
+    }
+
+    public static String helperText() {
+        if (helperState == 1) return "běží, přes něj " + helperOk + ", na otevřeném spojení " + helperReused;
+        if (helperState == 2) return "neběží";
+        return "zatím nezkoušeno";
     }
 
     /** The start of a small text response (error pages), for the log. */
@@ -185,8 +213,10 @@ public class Net {
         Log.add("NET start " + label + ": " + (url.length() > 90 ? url.substring(0, 90) + "..." : url));
         try {
             IOException last = null;
+            boolean direct = false;
             for (attempt = 1; attempt <= ATTEMPTS; attempt++) {
-                Attempt a = new Attempt(url, contentType, body, label);
+                boolean viaHelper = !direct && useHelper(body);
+                Attempt a = new Attempt(url, contentType, body, label, viaHelper);
                 lastActivity = System.currentTimeMillis();
                 a.start();
                 while (!a.done) {
@@ -198,6 +228,28 @@ public class Net {
                         last = new IOException("server neodpovídá");
                         break;
                     }
+                }
+                if (a.done && viaHelper) {
+                    if (a.response == null) {
+                        // the helper isn't running (or broke): this request again directly, not counted
+                        if (helperState != 2) Log.add("Net Helper not reachable (" + a.error + "), direct requests");
+                        helperState = 2;
+                        helperDownAt = System.currentTimeMillis();
+                        helperFailed++;
+                        attempt--;
+                        continue;
+                    }
+                    if (a.response.helperError != null) {
+                        Log.add("Net Helper: " + a.response.helperError + ", once more directly");
+                        helperFailed++;
+                        direct = true;
+                        attempt--;
+                        continue;
+                    }
+                    if (helperState != 1) Log.add("Net Helper running, requests go through it");
+                    helperState = 1;
+                    helperOk++;
+                    if (a.response.helper != null && a.response.helper.startsWith("conn=reused")) helperReused++;
                 }
                 if (a.done) {
                     if (a.response != null) return a.response;
@@ -240,12 +292,13 @@ public class Net {
     static class Attempt extends Thread {
         final String url, contentType, label;
         final byte[] body;
+        final boolean viaHelper;
         volatile boolean done, abandoned;
         Response response;
         IOException error;
 
-        Attempt(String url, String contentType, byte[] body, String label) {
-            this.url = url; this.contentType = contentType; this.body = body; this.label = label;
+        Attempt(String url, String contentType, byte[] body, String label, boolean viaHelper) {
+            this.url = url; this.contentType = contentType; this.body = body; this.label = label; this.viaHelper = viaHelper;
         }
 
         void phase(String s, int n) {
@@ -263,8 +316,14 @@ public class Net {
             OutputStream out = null;
             try {
                 phase("připojování", 0);
-                c = (HttpConnection) Connector.open(url);
-                if (!noUa.containsKey(host(url))) c.setRequestProperty("User-Agent", Settings.userAgent);
+                if (viaHelper) {
+                    // the helper sends exactly one User-Agent (ours), so no duplicate as with the phone's
+                    c = (HttpConnection) Connector.open(HELPER + encode(url));
+                    c.setRequestProperty("X-Ua", Settings.userAgent);
+                } else {
+                    c = (HttpConnection) Connector.open(url);
+                    if (!noUa.containsKey(host(url))) c.setRequestProperty("User-Agent", Settings.userAgent);
+                }
                 if (body != null) {
                     c.setRequestMethod(HttpConnection.POST);
                     c.setRequestProperty("Content-Type", contentType);
@@ -281,6 +340,10 @@ public class Net {
                 r.code = c.getResponseCode();
                 long tResp = System.currentTimeMillis();
                 r.type = c.getType() == null ? "" : c.getType();
+                if (viaHelper) {
+                    r.helper = c.getHeaderField("X-Helper");
+                    r.helperError = c.getHeaderField("X-Helper-Error");
+                }
                 int len = (int) c.getLength();
                 in = c.openInputStream();
                 ByteArrayOutputStream o = new ByteArrayOutputStream(len > 0 ? len : 8192);
@@ -297,7 +360,8 @@ public class Net {
                 r.ms = System.currentTimeMillis() - t0;
                 if (abandoned) return;
                 Log.add(label + ": HTTP " + r.code + ", " + r.body.length + " B " + r.type + ", response " + (tResp - t0)
-                    + " ms, total " + r.ms + " ms" + (attempt > 1 ? ", attempt " + attempt : ""));
+                    + " ms, total " + r.ms + " ms" + (attempt > 1 ? ", attempt " + attempt : "")
+                    + (viaHelper ? ", via helper: " + r.helper + (r.helperError != null ? " ERROR " + r.helperError : "") : ""));
                 response = r;
             } catch (IOException e) {
                 error = e;
