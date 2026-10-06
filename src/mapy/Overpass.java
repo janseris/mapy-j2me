@@ -15,9 +15,12 @@ public class Overpass {
      */
     static final String[] SERVERS = {
         "https://overpass-api.de/api/interpreter?data=",
-        // overpass.private.coffee (HTTP 404, HTTPS hangs) and maps.mail.ru (HTTP 301, HTTPS hangs)
-        // don't work from the 9300 (Probe 2.7 big test): only the main server here
+        // Other public instances. Their HTTPS hung in the phone's Java (Probe 2.7: private.coffee
+        // HTTP 404, HTTPS hangs), so they're tried only through Net Helper, which has its own TLS.
+        "https://overpass.private.coffee/api/interpreter?data=",
+        "https://overpass.kumi.systems/api/interpreter?data=",
     };
+    static final boolean[] HELPER_ONLY = { false, true, true };
     static int good;
 
     /** GET an Overpass query, trying the other servers when one is busy (5xx, 429) or unreachable. */
@@ -26,6 +29,7 @@ public class Overpass {
         Net.Response r = null;
         for (int i = 0; i < SERVERS.length; i++) {
             int s = (good + i) % SERVERS.length;
+            if (HELPER_ONLY[s] && !Net.helperRunning()) continue;
             try {
                 r = Net.get(SERVERS[s] + Net.encode(q), label);
                 if (r.code == 200) {

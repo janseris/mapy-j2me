@@ -107,6 +107,8 @@ public class Net {
         hostMode.put("routing.openstreetmap.de", "http");
         // ...or redirects to HTTPS
         hostMode.put("tile.openstreetmap.org", "https");
+        hostMode.put("overpass.private.coffee", "https");       // http:// answered 404 (Probe 2.7)
+        hostMode.put("overpass.kumi.systems", "https");
     }
 
     /**
@@ -122,9 +124,20 @@ public class Net {
     static volatile long helperDownAt;
     public static volatile int helperOk, helperReused, helperFailed;
 
+    /** Hosts the phone's own Java can't use (their HTTPS hangs): only through the helper. */
+    static final java.util.Hashtable helperOnly = new java.util.Hashtable();
+    static {
+        helperOnly.put("overpass.private.coffee", Boolean.TRUE);
+        helperOnly.put("overpass.kumi.systems", Boolean.TRUE);
+    }
+
     static boolean useHelper(byte[] body) {
         if (Settings.helper != 0 || body != null) return false;
         return helperState != 2 || System.currentTimeMillis() - helperDownAt > HELPER_RETRY_MS;
+    }
+
+    public static boolean helperRunning() {
+        return Settings.helper == 0 && helperState == 1;
     }
 
     public static String helperText() {
@@ -237,6 +250,7 @@ public class Net {
                         helperState = 2;
                         helperDownAt = System.currentTimeMillis();
                         helperFailed++;
+                        if (helperOnly.containsKey(host(url))) throw new IOException("needs Net Helper");
                         attempt--;
                         continue;
                     }
