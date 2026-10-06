@@ -136,6 +136,13 @@ public class Net {
         return helperState != 2 || System.currentTimeMillis() - helperDownAt > HELPER_RETRY_MS;
     }
 
+    public static final String HELPER_DOWN = "Net Helper is not running: start it on the phone for faster downloads (or turn it off in Settings)";
+
+    /** Net Helper is to be used but didn't answer (connection refused): the panel shows a warning. */
+    public static boolean helperDown() {
+        return Settings.helper == 0 && helperState == 2;
+    }
+
     public static boolean helperRunning() {
         return Settings.helper == 0 && helperState == 1;
     }
@@ -248,6 +255,7 @@ public class Net {
                         // the helper isn't running (or broke): this request again directly, not counted
                         if (helperState != 2) Log.add("Net Helper not reachable (" + a.error + "), direct requests");
                         helperState = 2;
+                        notifyListener();
                         helperDownAt = System.currentTimeMillis();
                         helperFailed++;
                         if (helperOnly.containsKey(host(url))) throw new IOException("needs Net Helper");

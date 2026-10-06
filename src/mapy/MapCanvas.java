@@ -1554,6 +1554,10 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             g.setColor(0xEE6C6C);
             y = wrap(g, f, "Map error (" + tileErrors + "x): " + tileError, 3, y, tw, 3);
         }
+        if (Net.helperDown()) {
+            g.setColor(0xF0B232);
+            y = wrap(g, f, Net.HELPER_DOWN, 3, y, tw, 3);
+        }
         String prog = Net.progressText();
         if (prog.length() > 0) {
             g.setColor(0xFCEE74);
