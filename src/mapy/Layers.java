@@ -7,7 +7,7 @@ package mapy;
  * - OpenTopoMap: topographic (contours, hill shading, paths), CC-BY-SA, max zoom 17.
  * - ČÚZK ZTM: the Czech state topographic map (Základní topografická mapa), open data, CZ only.
  * - ČÚZK ortofoto: the Czech state aerial photos, open data, CZ only.
- * - Mapy.com outdoor / aerial: through the official Mapy.com API with the user's own API key
+ * - Mapy.com outdoor / aerial / standard: through the official Mapy.com API with the user's own API key
  *   (free registration at developer.mapy.com); hidden without a key.
  */
 public class Layers {
@@ -18,9 +18,10 @@ public class Layers {
         "ČÚZK aerial (Czechia)",
         "Mapy.com outdoor (API key)",
         "Mapy.com aerial (API key)",
+        "Mapy.com standard (API key)",
     };
     /** Short names for the log. */
-    public static final String[] SHORT = { "osm", "otm", "cuzk-ztm", "cuzk-orto", "mapy-outdoor", "mapy-aerial" };
+    public static final String[] SHORT = { "osm", "otm", "cuzk-ztm", "cuzk-orto", "mapy-outdoor", "mapy-aerial", "mapy-basic" };
     static final String[] URLS = {
         "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         "https://tile.opentopomap.org/{z}/{x}/{y}.png",
@@ -28,6 +29,7 @@ public class Layers {
         "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO_WM/MapServer/tile/{z}/{y}/{x}",
         "https://api.mapy.com/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey={key}",
         "https://api.mapy.com/v1/maptiles/aerial/256/{z}/{x}/{y}?apikey={key}",
+        "https://api.mapy.com/v1/maptiles/basic/256/{z}/{x}/{y}?apikey={key}",
     };
     static final String[] CREDITS = {
         "© OpenStreetMap|",
@@ -36,9 +38,10 @@ public class Layers {
         "© ČÚZK|",
         "© Seznam.cz|© OpenStreetMap",
         "© Seznam.cz|© OpenStreetMap",
+        "© Seznam.cz|© OpenStreetMap",
     };
     /** Deepest zoom each server has its own tiles for; the app zooms to MAX, enlarging beyond. */
-    static final int[] NATIVE_ZOOM = { 19, 17, 19, 20, 18, 18 };
+    static final int[] NATIVE_ZOOM = { 19, 17, 19, 20, 18, 18, 19 };
     public static final int MAX = 20;
 
     public static int current() {

@@ -141,14 +141,14 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             Geo.xToLon(cx + w / 2 + gx, zoom), Geo.yToLat(cy - h / 2 - gy, zoom) };
     }
 
-    /** Zooms keeping the map point under the cursor where it is. */
+    /** Zooms around the centre of the map: the point in the middle stays where it is. */
     void setZoom(int z) {
         if (z < 3 || z > Layers.maxZoom() || z == zoom) return;
         initCursor();
-        double lon = Geo.xToLon(wx(mx), zoom), lat = Geo.yToLat(wy(my), zoom);
+        double lon = Geo.xToLon(cx, zoom), lat = Geo.yToLat(cy, zoom);
         zoom = z;
-        cx = Geo.lonToX(lon, zoom) - mx + mw() / 2;
-        cy = Geo.latToY(lat, zoom) - my + mh() / 2;
+        cx = Geo.lonToX(lon, zoom);
+        cy = Geo.latToY(lat, zoom);
         hovered = null;
         viewChanged();
     }
