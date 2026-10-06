@@ -108,6 +108,13 @@ public class DiskCache {
         if (oldest != null) remove(oldest, (Entry) index.get(oldest));
     }
 
+    /** Whether the cache has a fresh entry for key (index only, no reading). */
+    public static synchronized boolean has(String key) {
+        if (Settings.cacheMB <= 0 || !open()) return false;
+        Entry e = (Entry) index.get(key);
+        return e != null && System.currentTimeMillis() - e.saved <= MAX_AGE;
+    }
+
     public static synchronized void remove(String key) {
         Entry e = (Entry) index.get(key);
         if (e != null) remove(key, e);

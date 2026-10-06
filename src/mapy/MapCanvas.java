@@ -95,6 +95,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     volatile String status = "";
     String lastKey = "";
     final Object wake = new Object();
+    final Object dl = new Object();                 // tile downloader <-> loader
     boolean fullScreen = true;
 
     MapCanvas(Mapy app) {
@@ -171,6 +172,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         Settings.zoom = zoom;
         repaint();
         synchronized (wake) { wake.notify(); }
+        synchronized (dl) { dl.notifyAll(); }
     }
 
     // ---------------------------------------------------------------- loading
@@ -206,56 +208,153 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
 
     static String key(int z, int x, int y) { return Layers.current() + ":" + z + "/" + x + "/" + y; }
 
-    /** Loads one missing visible tile, nearest to the centre first. False when none is missing. */
-    boolean loadNextTile() {
+    /*
+     * Two threads for tiles, so the connection never waits for the phone: the downloader only
+     * downloads (nearest missing tile first, up to PREFETCH answers kept in memory), while this
+     * loader decodes, scales, saves to the phone's cache and shows. Before, one thread did it all and
+     * the network sat idle ~1 s per tile (decoding 200-500 ms, saving 150-280 ms).
+     */
+    static final int PREFETCH = 4;
+    /** url -> Object[] { byte[] body or null, String log text, String error or null } */
+    final Hashtable fetched = new Hashtable();
+    volatile String fetching;
+    boolean downloaderStarted;
+
+    /** The missing visible tiles, nearest first: { key, Integer bx, Integer by, url, parent key, Integer d } */
+    Vector missingTiles() {
         int w = mw(), h = mh(), z = zoom;
         double ccx = cx, ccy = cy;
         int x0 = (int) Math.floor((ccx - w / 2) / T), x1 = (int) Math.floor((ccx + w / 2) / T);
         int y0 = (int) Math.floor((ccy - h / 2) / T), y1 = (int) Math.floor((ccy + h / 2) / T);
-        int max = 1 << z, bx = 0, by = 0, missing = 0;
-        double best = Double.MAX_VALUE;
+        int max = 1 << z;
+        int nz = Math.min(z, Layers.nativeZoom()), d = z - nz;
+        Vector out = new Vector(), dist = new Vector();
         for (int y = y0; y <= y1; y++) {
             if (y < 0 || y >= max) continue;
             for (int x = x0; x <= x1; x++) {
-                String k = key(z, x & (max - 1), y);
+                int tx = x & (max - 1);
+                String k = key(z, tx, y);
                 if (tiles.containsKey(k) || failed.containsKey(k)) continue;
-                missing++;
-                double dx = x * T + T / 2 - ccx, dy = y * T + T / 2 - ccy, d = dx * dx + dy * dy;
-                if (d < best) { best = d; bx = x; by = y; }
+                double dx = x * T + T / 2 - ccx, dy = y * T + T / 2 - ccy, dd = dx * dx + dy * dy;
+                int at = 0;
+                while (at < dist.size() && ((Double) dist.elementAt(at)).doubleValue() <= dd) at++;
+                int px = tx >> d, py = y >> d;
+                out.insertElementAt(new Object[] { k, new Integer(x), new Integer(y), Layers.url(nz, px, py), key(nz, px, py), new Integer(d) }, at);
+                dist.insertElementAt(new Double(dd), at);
             }
         }
-        if (missing == 0) return false;
-        int tx = bx & (max - 1);
-        String k = key(z, tx, by);
-        status = "Map: tiles left " + missing;
+        return out;
+    }
+
+    void startDownloader() {
+        if (downloaderStarted) return;
+        downloaderStarted = true;
+        new Thread() {
+            public void run() {
+                while (true) {
+                    try {
+                        if (!downloadOne()) synchronized (dl) { dl.wait(1000); }
+                    } catch (Throwable e) {
+                        Log.add("downloader: " + e);
+                        try { Thread.sleep(1000); } catch (InterruptedException ie) {}
+                    }
+                }
+            }
+        }.start();
+    }
+
+    /** Downloads the nearest missing tile nobody has yet. False when there's nothing to do. */
+    boolean downloadOne() {
+        Vector m = missingTiles();
+        Hashtable wanted = new Hashtable();
+        for (int i = 0; i < m.size(); i++) wanted.put(((Object[]) m.elementAt(i))[3], Boolean.TRUE);
+        // answers for tiles no longer in view are dropped, so they don't block the downloader
+        if (fetched.size() >= PREFETCH) {
+            for (Enumeration en = fetched.keys(); en.hasMoreElements();) {
+                Object u = en.nextElement();
+                if (!wanted.containsKey(u)) fetched.remove(u);
+            }
+            if (fetched.size() >= PREFETCH) return false;
+        }
+        Object[] job = null;
+        for (int i = 0; i < m.size() && job == null; i++) {
+            Object[] t = (Object[]) m.elementAt(i);
+            String url = (String) t[3];
+            if (fetched.containsKey(url) || url.equals(fetching)) continue;
+            if (((Integer) t[5]).intValue() > 0 && t[4].equals(parentKey)) continue;     // enlarged from the last parent
+            if (DiskCache.has(url)) continue;
+            job = t;
+        }
+        if (job == null) return false;
+        String url = (String) job[3];
+        fetching = url;
+        long t0 = System.currentTimeMillis();
+        Object[] res;
+        try {
+            Net.Response r = Net.get(url, "tile " + job[0]);
+            String info = "net " + r.scheme + (r.helper != null ? " via helper (" + r.helper + ")" : "") + " HTTP " + r.code + " "
+                + r.body.length + " B " + r.type + " " + (System.currentTimeMillis() - t0) + " ms";
+            if (r.code == 200) res = new Object[] { r.body, info, null };
+            else {
+                String why = Net.text(r);
+                Log.add("tile " + job[4] + ": HTTP " + r.code + " " + why);
+                res = new Object[] { null, info, "HTTP " + r.code + (why.length() > 0 ? " " + why : "") };
+            }
+        } catch (Throwable e) {
+            String msg = e.getMessage() != null ? e.getMessage() : e.toString();
+            res = new Object[] { null, "net ERROR " + msg + " " + (System.currentTimeMillis() - t0) + " ms", msg };
+        }
+        fetched.put(url, res);
+        fetching = null;
+        synchronized (dl) { dl.notifyAll(); }
+        return true;
+    }
+
+    /** Shows one missing visible tile whose data is ready (phone cache or downloaded). False when none is missing. */
+    boolean loadNextTile() {
+        startDownloader();
+        Vector m = missingTiles();
+        if (m.size() == 0) return false;
+        status = "Map: tiles left " + m.size();
         repaintPanel();
+        Object[] job = null;
+        for (int i = 0; i < m.size() && job == null; i++) {
+            Object[] t = (Object[]) m.elementAt(i);
+            String url = (String) t[3];
+            if ((((Integer) t[5]).intValue() > 0 && t[4].equals(parentKey)) || fetched.containsKey(url) || DiskCache.has(url)) job = t;
+        }
+        if (job == null) {
+            // nothing ready yet: let the downloader work and wait for its next answer
+            synchronized (dl) {
+                dl.notifyAll();
+                try { dl.wait(500); } catch (InterruptedException e) {}
+            }
+            return true;
+        }
+        String k = (String) job[0], url = (String) job[3], pk = (String) job[4];
+        int bx = ((Integer) job[1]).intValue(), by = ((Integer) job[2]).intValue(), d = ((Integer) job[5]).intValue();
+        int z = zoom, max = 1 << z, tx = bx & (max - 1);
+        int nz = z - d, px = tx >> d, py = by >> d;
         try {
             // past the map type's own detail, the tile is cut out of its deepest tile and enlarged
-            int nz = Math.min(z, Layers.nativeZoom()), d = z - nz;
-            int px = tx >> d, py = by >> d;
-            String pk = key(nz, px, py);
             Image src = d > 0 && pk.equals(parentKey) ? parentImage : null;
             tileInfo = "TILE " + Layers.SHORT[Layers.current()] + " " + nz + "/" + px + "/" + py + (d > 0 ? " (for z" + z + ")" : "");
             if (src == null) {
-                String url = Layers.url(nz, px, py);
                 long t0 = System.currentTimeMillis();
-                byte[] body = DiskCache.get(url);         // phone storage first, then the network
-                String from = "disk";
-                int code = 200;
-                if (body == null) {
-                    Net.Response r = Net.get(url, "tile " + k);
-                    from = "net " + r.scheme + (r.helper != null ? " via helper (" + r.helper + ")" : "");
-                    code = r.code;
-                    if (r.code == 200) DiskCache.put(url, r.body);
-                    else {
-                        // any non-200 is an error: logged, shown on the tile and in the panel
-                        String why = Net.text(r);
-                        Log.add("tile " + pk + ": HTTP " + r.code + " " + why);
-                        tileError = "HTTP " + r.code + (why.length() > 0 ? " " + why : "");
-                    }
-                    body = r.code == 200 ? r.body : null;
-                    tileInfo += " " + from + " HTTP " + code + " " + r.body.length + " B " + r.type + " " + (System.currentTimeMillis() - t0) + " ms";
+                byte[] body;
+                Object[] res = (Object[]) fetched.remove(url);
+                synchronized (dl) { dl.notifyAll(); }          // room for the next download
+                if (res != null) {
+                    body = (byte[]) res[0];
+                    tileInfo += " " + res[1];
+                    if (body != null) {
+                        long ts = System.currentTimeMillis();
+                        DiskCache.put(url, body);
+                        tileInfo += ", saved in " + (System.currentTimeMillis() - ts) + " ms";
+                    } else tileError = (String) res[2];
                 } else {
+                    body = DiskCache.get(url);
+                    if (body == null) return true;          // gone from the cache meanwhile: the downloader gets it
                     tileInfo += " disk " + body.length + " B " + (System.currentTimeMillis() - t0) + " ms";
                 }
                 if (body != null) {
@@ -274,7 +373,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                         throw new IllegalArgumentException("tile can't be shown" + (prog ? " (progressive JPEG)" : "") + ", " + body.length + " B");
                     }
                 }
-                if (d > 0) { parentKey = pk; parentImage = src; }
+                if (d > 0 && src != null) { parentKey = pk; parentImage = src; }
             }
             if (src == null) {
                 failed.put(k, tileError.length() > 0 ? tileError : "error");
@@ -301,12 +400,13 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             synchronized (tiles) {
                 while (tileOrder.size() > 6) { tiles.remove(tileOrder.elementAt(0)); tileOrder.removeElementAt(0); }
             }
+            fetched.clear();
             System.gc();
-            Log.add("tile " + k + ": out of memory, cache trimmed");
+            Log.add("tile " + k + ": out of memory, caches trimmed");
         } catch (Throwable e) {
             Log.add(tileInfo + ", ERROR " + e);
-            String m = e.getMessage();
-            tileError = m != null ? m : e.toString();
+            String msg = e.getMessage();
+            tileError = msg != null ? msg : e.toString();
             failed.put(k, tileError);
             noteTileError();
         }
@@ -576,6 +676,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         if (my > mh() - EDGE) my = mh() - EDGE;
         repaint();
         synchronized (wake) { wake.notify(); }
+        synchronized (dl) { dl.notifyAll(); }
     }
 
     // ---------------------------------------------------------------- route, GPS, navigation
