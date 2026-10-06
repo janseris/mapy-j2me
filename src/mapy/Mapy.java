@@ -503,13 +503,13 @@ public class Mapy extends MIDlet implements CommandListener {
 
     /** Map type chooser (a native List: Up/Down move, Enter picks). */
     void chooseLayer() {
-        layerList = new List("Map type", List.IMPLICIT);
+        layerList = new List("Map type (measured speed on the 9300" + (Net.helperRunning() ? ", Net Helper running)" : ")"), List.IMPLICIT);
         layerIds = new int[Layers.NAMES.length];
         int n = 0;
         for (int i = 0; i < Layers.NAMES.length; i++) {
             if (Layers.needsKey(i) && Settings.mapyKey.length() == 0) continue;    // Mapy.com maps only with a key
             layerIds[n++] = i;
-            layerList.append((i == Layers.current() ? "* " : "") + Layers.NAMES[i], null);
+            layerList.append((i == Layers.current() ? "* " : "") + Layers.NAMES[i] + ": " + Layers.speed(i), null);
             if (i == Layers.current()) layerList.setSelectedIndex(n - 1, true);
         }
         layerList.addCommand(BACK);

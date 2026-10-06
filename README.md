@@ -44,6 +44,24 @@ inspired by the Mapy.com Android app.
   API gives no turn instructions, so they are made from the line's bends (no street names). If the
   Mapy.com request fails, OSRM is used as before.
 
+## Map types: measured speed
+
+Network time per tile on the Nokia 9300 (Probe 3.4 *Map servers* test, average of 4 runs, 2026-10-06,
+internet over USB from a PC; the first tile of each series left out). The map type list shows these.
+
+| Map type | Direct | Through Net Helper |
+|---|---|---|
+| OpenStreetMap (HTTPS) | 0.7 s | 0.2 s |
+| OpenTopoMap (HTTP) | 0.5 s | 0.2 s |
+| ČÚZK base map (HTTP, 30–40 KB JPEG) | 0.6 s | 0.4 s |
+| ČÚZK aerial (HTTP) | 0.6 s | 0.4 s |
+| Mapy.com outdoor (HTTPS, API key) | 1.7 s | 0.3 s |
+| Mapy.com aerial (HTTPS, API key) | 1.6 s | 0.3 s |
+| Mapy.com standard (HTTPS, API key) | 1.5 s | 0.3 s |
+
+Without Net Helper every HTTPS tile pays a new TLS handshake (Mapy.com ~1 s); the servers themselves
+answer in 60–220 ms. Decoding on the phone comes on top (JPEG ~200 ms, PNG 300–500 ms).
+
 ## Controls
 
 Full screen: an info panel on the left (progress, status, the object under the cursor, zoom,

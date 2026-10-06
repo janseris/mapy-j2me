@@ -44,6 +44,25 @@ public class Layers {
     static final int[] NATIVE_ZOOM = { 19, 17, 19, 20, 18, 18, 19 };
     public static final int MAX = 20;
 
+    /**
+     * Measured network time per tile (ms) on the Nokia 9300, without the first tile: Probe 3.4
+     * "Map servers" test, 4 runs on 2026-10-06, internet over USB from a PC (IP passthrough).
+     * Direct = Java HttpConnection, a new connection (and TLS handshake for HTTPS) per tile;
+     * helper = through Net Helper 9300, which keeps the connection open. Decoding comes on top
+     * (JPEG ~200 ms, PNG 300-500 ms).
+     */
+    static final int[] MS_DIRECT = { 680, 510, 630, 590, 1650, 1590, 1550 };
+    static final int[] MS_HELPER = { 230, 210, 430, 410, 340, 270, 320 };
+
+    static String sec(int ms) { int t = (ms + 50) / 100; return (t / 10) + "." + (t % 10) + " s"; }
+
+    /** For the map type list: the measured speed, the one that applies now first. */
+    public static String speed(int l) {
+        return Net.helperRunning()
+            ? sec(MS_HELPER[l]) + " per tile (without Net Helper " + sec(MS_DIRECT[l]) + ")"
+            : sec(MS_DIRECT[l]) + " per tile (with Net Helper " + sec(MS_HELPER[l]) + ")";
+    }
+
     public static int current() {
         int l = Settings.layer;
         if (l < 0 || l >= URLS.length || (needsKey(l) && Settings.mapyKey.length() == 0)) return 0;
