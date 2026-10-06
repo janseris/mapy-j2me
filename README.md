@@ -35,6 +35,12 @@ inspired by the Mapy.com Android app.
   ("In 80 m: Turn left onto Křížkovského"), the remaining distance and time; off the route (30 m on
   foot, 50 m by car, 3 fixes in a row) it recalculates, at most every 15 s. Mapy.com's own routes can't
   be used for this yet: their full line is in an encoded format; see `../mapy/ANALYSIS.md`.
+  **With your own Mapy.com API key** (Settings → Mapy.com API key; *Load from the PC* reads
+  `mapy_api.key` next to the kit's `ota_server.js`, gitignored) routes come from the official Mapy.com
+  REST API instead (`api.mapy.com/v1/routing/route`, 4 credits each, free plan 250,000 credits a
+  month): cars use `car_fast_traffic` (current traffic in Czechia), "no toll roads" is `avoidToll`. That
+  API gives no turn instructions, so they are made from the line's bends (no street names). If the
+  Mapy.com request fails, OSRM is used as before.
 
 ## Controls
 

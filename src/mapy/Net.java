@@ -210,7 +210,8 @@ public class Net {
             try { Thread.sleep(25); } catch (InterruptedException e) {}
         }
         what = label;
-        Log.add("NET start " + label + ": " + (url.length() > 90 ? url.substring(0, 90) + "..." : url));
+        String shown = masked(url);
+        Log.add("NET start " + label + ": " + (shown.length() > 90 ? shown.substring(0, 90) + "..." : shown));
         try {
             IOException last = null;
             boolean direct = false;
@@ -378,6 +379,14 @@ public class Net {
                 done = true;
             }
         }
+    }
+
+    /** The URL for the log, with the API key's value replaced (the log is sent to the PC). */
+    static String masked(String url) {
+        int i = url.indexOf("apikey=");
+        if (i < 0) return url;
+        int e = url.indexOf('&', i);
+        return url.substring(0, i + 7) + "***" + (e < 0 ? "" : url.substring(e));
     }
 
     /** URL-encodes a query parameter (UTF-8). */

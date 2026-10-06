@@ -29,6 +29,8 @@ public class Route {
     /** What the toll avoidance actually did ("" when not asked for). */
     public String tollNote = "";
     public boolean noToll;
+    /** "Mapy.com" or "OSRM". */
+    public String source = "OSRM";
 
     public static Route plan(double fromLon, double fromLat, double toLon, double toLat, boolean car) throws IOException {
         return plan(fromLon, fromLat, toLon, toLat, car, false);
@@ -40,6 +42,123 @@ public class Route {
      * motorway+toll, then motorway, then toll, and say what was used.
      */
     public static Route plan(double fromLon, double fromLat, double toLon, double toLat, boolean car, boolean noToll) throws IOException {
+        // with the user's own Mapy.com API key: Mapy.com's routing (current traffic for cars in Czechia);
+        // if that fails for any reason, the OSRM route below as before
+        if (Settings.mapyKey.length() > 0) {
+            try {
+                return mapy(fromLon, fromLat, toLon, toLat, car, noToll);
+            } catch (Throwable e) {
+                Log.add("Mapy.com route failed (" + e + "), trying OSRM");
+            }
+        }
+        return osrm(fromLon, fromLat, toLon, toLat, car, noToll);
+    }
+
+    /**
+     * Mapy.com REST API routing (developer.mapy.com, 4 credits per route): GET api.mapy.com/v1/routing/route
+     * with start/end "lon,lat", routeType car_fast_traffic / foot_fast, avoidToll, format=geojson.
+     * The answer has length (m), duration (s) and the line, but no turn instructions: those are
+     * made from the line's bends (turns without street names).
+     */
+    static Route mapy(double fromLon, double fromLat, double toLon, double toLat, boolean car, boolean noToll) throws IOException {
+        String url = "https://api.mapy.com/v1/routing/route?apikey=" + Net.encode(Settings.mapyKey) + "&lang=en"
+            + "&start=" + Geo.fmt(fromLon, 6) + "," + Geo.fmt(fromLat, 6) + "&end=" + Geo.fmt(toLon, 6) + "," + Geo.fmt(toLat, 6)
+            + "&routeType=" + (car ? "car_fast_traffic" : "foot_fast") + "&format=geojson" + (car && noToll ? "&avoidToll=true" : "");
+        Net.Response r = Net.get(url, car ? "car route (Mapy.com)" : "walking route (Mapy.com)");
+        String text = Frpc.utf8Decode(r.body, 0, r.body.length);
+        if (r.code != 200) {
+            Log.add("Mapy.com route HTTP " + r.code + ": " + (text.length() > 300 ? text.substring(0, 300) : text));
+            throw new IOException("HTTP " + r.code);
+        }
+        Object o = Json.parse(text);
+        Hashtable g = Json.obj(o, "geometry");
+        if (g != null && Json.obj(g, "geometry") != null) g = Json.obj(g, "geometry");     // a GeoJSON Feature
+        Vector c = Json.arr(g, "coordinates");
+        if (c.size() < 2) {
+            Log.add("Mapy.com route without a line: " + (text.length() > 300 ? text.substring(0, 300) : text));
+            throw new IOException("no line in the answer");
+        }
+        Route route = new Route();
+        route.source = "Mapy.com";
+        route.car = car;
+        route.distance = Json.num(o, "length");
+        route.duration = Json.num(o, "duration");
+        if (car && noToll) route.tollNote = "avoiding toll roads (Mapy.com)";
+        int n = c.size();
+        route.lon = new double[n];
+        route.lat = new double[n];
+        route.along = new double[n];
+        for (int k = 0; k < n; k++) {
+            Vector p = (Vector) c.elementAt(k);
+            route.lon[k] = ((Double) p.elementAt(0)).doubleValue();
+            route.lat[k] = ((Double) p.elementAt(1)).doubleValue();
+            if (k > 0) route.along[k] = route.along[k - 1] + Geo.distance(route.lon[k - 1], route.lat[k - 1], route.lon[k], route.lat[k]);
+        }
+        if (route.distance <= 0) route.distance = route.along[n - 1];
+        route.bends();
+        Log.add("route " + (car ? "car" : "foot") + " (Mapy.com" + (car ? ", traffic" : "") + "): " + (int) route.distance + " m, "
+            + (int) route.duration + " s, " + n + " points, " + route.steps.size() + " steps from bends, " + r.body.length + " B");
+        return route;
+    }
+
+    /** Turn steps from the line itself: where the direction changes by 30+ degrees (measured 20 m before and after). */
+    void bends() {
+        int n = lon.length;
+        Step d = new Step();
+        d.type = "depart";
+        d.lon = lon[0]; d.lat = lat[0];
+        d.text = text(d, car);
+        steps.addElement(d);
+        double lastAt = -1000;
+        for (int i = 1; i + 1 < n; i++) {
+            int a = i, b = i;
+            while (a > 0 && along[i] - along[a] < 20) a--;
+            while (b < n - 1 && along[b] - along[i] < 20) b++;
+            if (a == i || b == i) continue;
+            double in = bearingOf(a, i), out = bearingOf(i, b);
+            double delta = out - in;
+            while (delta > 180) delta -= 360;
+            while (delta < -180) delta += 360;
+            double ad = Math.abs(delta);
+            if (ad < 30 || along[i] - lastAt < 30) continue;
+            // the sharpest point of this bend within the next 15 m
+            int best = i;
+            double bestD = ad;
+            for (int j = i + 1; j + 1 < n && along[j] - along[i] < 15; j++) {
+                int aj = j, bj = j;
+                while (aj > 0 && along[j] - along[aj] < 20) aj--;
+                while (bj < n - 1 && along[bj] - along[j] < 20) bj++;
+                if (aj == j || bj == j) continue;
+                double dj = bearingOf(j, bj) - bearingOf(aj, j);
+                while (dj > 180) dj -= 360;
+                while (dj < -180) dj += 360;
+                if (Math.abs(dj) > bestD) { bestD = Math.abs(dj); best = j; delta = dj; }
+            }
+            Step s = new Step();
+            s.type = "turn";
+            String side = delta < 0 ? "left" : "right";
+            s.modifier = bestD > 135 ? "sharp " + side : bestD < 55 ? "slight " + side : side;
+            s.index = best;
+            s.lon = lon[best]; s.lat = lat[best];
+            s.text = text(s, car);
+            steps.addElement(s);
+            lastAt = along[best];
+            i = best;
+        }
+        Step e = new Step();
+        e.type = "arrive";
+        e.index = n - 1;
+        e.lon = lon[n - 1]; e.lat = lat[n - 1];
+        e.text = text(e, car);
+        steps.addElement(e);
+    }
+
+    double bearingOf(int a, int b) {
+        double kx = Math.cos(Math.toRadians(lat[a])) * 111320;
+        return Geo.bearing((lon[b] - lon[a]) * kx, (lat[b] - lat[a]) * 110540);
+    }
+
+    static Route osrm(double fromLon, double fromLat, double toLon, double toLat, boolean car, boolean noToll) throws IOException {
         String url = BASE + (car ? "routed-car" : "routed-foot") + "/route/v1/driving/"
             + Geo.fmt(fromLon, 6) + "," + Geo.fmt(fromLat, 6) + "%3B" + Geo.fmt(toLon, 6) + "," + Geo.fmt(toLat, 6)
             + "?overview=full&geometries=polyline&steps=true";

@@ -34,7 +34,7 @@ public class SettingsScreen implements CommandListener {
     final int[] choice = new int[ROWS];        // selected option of choice rows
     final String[] text = new String[ROWS];    // value of text rows
     String initial;
-    List list, options;
+    List list, options, keyMenu;
     TextBox editor;
     Alert unsaved;
     int row;
@@ -121,6 +121,15 @@ public class SettingsScreen implements CommandListener {
                 + "Error in the map? openstreetmap.org/fixthemap. Search, details, photos and icons: Mapy.com.", null, AlertType.INFO);
             a.setTimeout(Alert.FOREVER);
             display.setCurrent(a, list);
+        } else if (r == KEY) {
+            // typing a 43-character key on the phone is no fun: load it from the PC instead
+            keyMenu = new List(NAMES[r], List.IMPLICIT);
+            keyMenu.append("Load from the PC (http://" + text[PC] + "/mapy_api.key)", null);
+            keyMenu.append("Type it", null);
+            if (text[KEY].length() > 0) keyMenu.append("Remove the key", null);
+            keyMenu.addCommand(BACK);
+            keyMenu.setCommandListener(this);
+            display.setCurrent(keyMenu);
         } else if (isText(r)) {
             int max = r == UA ? 200 : r == KEY ? 100 : 64;
             editor = new TextBox(NAMES[r], text[r], max, TextField.ANY);
@@ -135,6 +144,54 @@ public class SettingsScreen implements CommandListener {
             options.setCommandListener(this);
             display.setCurrent(options);
         }
+    }
+
+    /**
+     * Downloads the key from the PC's OTA server: the file mapy_api.key next to ota_server.js
+     * (gitignored; the server gives *.key files only to the phone on the USB link). The key is
+     * kept like a typed one: only after Save.
+     */
+    void loadKey() {
+        final Form wait = new Form("Mapy.com API key");
+        wait.append("Loading the key from http://" + text[PC] + "/mapy_api.key ...");
+        display.setCurrent(wait);
+        new Thread() {
+            public void run() {
+                String msg;
+                try {
+                    Net.Response r = Net.get("http://" + text[PC] + "/mapy_api.key", "API key from the PC");
+                    String k = r.code == 200 ? Frpc.utf8Decode(r.body, 0, r.body.length).trim() : "";
+                    if (r.code != 200) msg = "The PC answered HTTP " + r.code + ". Is mapy_api.key next to ota_server.js?";
+                    else if (!validKey(k)) msg = "The file doesn't look like an API key (" + k.length() + " characters).";
+                    else {
+                        text[KEY] = k;
+                        msg = null;
+                        Log.add("API key loaded from the PC (" + k.length() + " characters)");
+                    }
+                } catch (Throwable e) {
+                    msg = "Couldn't reach the PC (" + e.getMessage() + "). Is the OTA server running?";
+                }
+                final String m = msg;
+                display.callSerially(new Runnable() {
+                    public void run() {
+                        if (display.getCurrent() != wait) return;
+                        show();
+                        Alert a = new Alert("Mapy.com API key", m == null ? "Key loaded. Press Save to keep it." : m, null, m == null ? AlertType.CONFIRMATION : AlertType.ERROR);
+                        a.setTimeout(m == null ? 2500 : Alert.FOREVER);
+                        display.setCurrent(a, list);
+                    }
+                });
+            }
+        }.start();
+    }
+
+    static boolean validKey(String k) {
+        if (k.length() < 20 || k.length() > 100) return false;
+        for (int i = 0; i < k.length(); i++) {
+            char c = k.charAt(i);
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_')) return false;
+        }
+        return true;
     }
 
     void save() {
@@ -195,6 +252,17 @@ public class SettingsScreen implements CommandListener {
                 a.setTimeout(2000);
                 display.setCurrent(a, list);
             } else leave();
+        } else if (d == keyMenu) {
+            int i = keyMenu.getSelectedIndex();
+            if (c != List.SELECT_COMMAND) show();
+            else if (i == 0) loadKey();
+            else if (i == 1) {
+                editor = new TextBox(NAMES[KEY], text[KEY], 100, TextField.ANY);
+                editor.addCommand(DONE);
+                editor.addCommand(BACK);
+                editor.setCommandListener(this);
+                display.setCurrent(editor);
+            } else { text[KEY] = ""; show(); }
         } else if (d == options) {
             if (c == List.SELECT_COMMAND) choice[row] = options.getSelectedIndex();
             show();

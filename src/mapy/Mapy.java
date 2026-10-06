@@ -430,7 +430,7 @@ public class Mapy extends MIDlet implements CommandListener {
                 r.to = dest;
                 r.noToll = noToll;
                 map.marker = dest;
-                if (r.tollNote.length() > 0) map.status = "Route " + r.tollNote;
+                map.status = "Route from " + r.source + (r.tollNote.length() > 0 ? ", " + r.tollNote : "");
                 if (nav) {
                     map.navigating = true;
                     map.follow = true;
