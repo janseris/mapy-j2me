@@ -184,7 +184,9 @@ public class Gps implements Runnable, DiscoveryListener {
      * Net Helper doesn't answer at the start (then Java reads the GPS itself as before).
      */
     boolean viaHelper(String addr) {
-        String url = "http://127.0.0.1:8123/gps?addr=" + addr;
+        // 8124: Net Helper 0.6+ answers the GPS there at once (on 8123 it waited behind tile downloads)
+        String url = "http://127.0.0.1:8124/gps?addr=" + addr;
+        boolean tried8123 = false;
         String lastGga = "", lastRmc = "", lastState = "";
         int fails = 0;
         boolean answered = false;
@@ -195,7 +197,7 @@ public class Gps implements Runnable, DiscoveryListener {
             try {
                 Net.Response r = Net.get(url, "gps");
                 if (r.code != 200) throw new IOException("HTTP " + r.code);
-                if (!answered) { answered = true; fromHelper = true; Log.add("gps: read by Net Helper"); }
+                if (!answered) { answered = true; fromHelper = true; Log.add("gps: read by Net Helper (" + url.substring(0, 21) + ")"); }
                 fails = 0;
                 String text = Frpc.utf8Decode(r.body, 0, r.body.length);
                 String state = "", info = "";
@@ -221,13 +223,14 @@ public class Gps implements Runnable, DiscoveryListener {
                 else if (!hasFix()) status = "Net Helper: " + info + (age >= 0 ? ", last data " + age / 1000 + " s ago" : "");
                 notifyListener();
             } catch (Throwable e) {
+                if (!answered && !tried8123) { tried8123 = true; url = "http://127.0.0.1:8123/gps?addr=" + addr; continue; }   // older Net Helper
                 if (!answered) { Log.add("gps: Net Helper not answering (" + e + "), Java reads the GPS"); return false; }
                 if (++fails >= 5) setStatus("Net Helper stopped answering: " + e.getMessage());
             }
             long wait = 1000 - (System.currentTimeMillis() - t0);
             if (wait > 50) try { Thread.sleep(wait); } catch (InterruptedException e) {}
         }
-        try { Net.get("http://127.0.0.1:8123/gps?stop=1", "gps stop"); } catch (Throwable e) {}
+        try { Net.get(url.substring(0, url.indexOf("?")) + "?stop=1", "gps stop"); } catch (Throwable e) {}
         fromHelper = false;
         return true;
     }
