@@ -257,6 +257,10 @@ public class Net {
             int attempts = slow ? 1 : ATTEMPTS, stallMs = slow ? 30000 : STALL_MS;
             for (attempt = 1; attempt <= attempts; attempt++) {
                 boolean viaHelper = !direct && !local && useHelper(body);
+                // Net Helper has its own time limits (up to ~55 s for a new TLS connection, then a 502)
+                // and serves one request at a time: abandoning it after 15 s and asking again only
+                // queued the same tile behind itself (Mapy 4.18: 3 x 15 s for one tile)
+                int stall = viaHelper && !slow ? 60000 : stallMs;
                 Attempt a = new Attempt(url, contentType, body, label, viaHelper);
                 Object mode = modes.get(Thread.currentThread());
                 if (mode != null) a.mode = (String) mode;
@@ -265,10 +269,11 @@ public class Net {
                 while (!a.done) {
                     try { Thread.sleep(250); } catch (InterruptedException e) {}
                     notifyListener();
-                    if (System.currentTimeMillis() - lastActivity > stallMs) {
-                        Log.add(label + ": no progress for " + (stallMs / 1000) + " s in '" + phase + "', abandoned (attempt " + attempt + ")");
+                    if (System.currentTimeMillis() - lastActivity > stall) {
+                        Log.add(label + ": no progress for " + (stall / 1000) + " s in '" + phase + "', abandoned (attempt " + attempt + ")");
                         a.abandoned = true;
                         last = new IOException("server not responding");
+                        if (viaHelper) direct = true;       // the next try directly, not queued behind it
                         break;
                     }
                 }
@@ -408,7 +413,7 @@ public class Net {
                 if (abandoned) return;
                 if (!url.startsWith("http://127.0.0.1")) Log.add(label + ": HTTP " + r.code + ", " + r.body.length + " B " + r.type + ", response " + (tResp - t0)
                     + " ms, total " + r.ms + " ms" + (attempt > 1 ? ", attempt " + attempt : "")
-                    + (viaHelper ? ", via helper: " + r.helper + (r.helperError != null ? " ERROR " + r.helperError : "") : ""));
+                    + (viaHelper ? ", via helper: " + r.helper + (r.helperError != null ? " ERROR " + r.helperError : "") + split(r.helper, t0, tResp) : ""));
                 response = r;
             } catch (IOException e) {
                 error = e;
@@ -425,6 +430,29 @@ public class Net {
                 done = true;
             }
         }
+    }
+
+    /**
+     * Where a request through Net Helper 0.12+ spent its time, from its "got=" (request in) and
+     * "sent=" (answer out), both ms of the day UTC like ours: on the way there (Java connecting and
+     * sending, or queued behind another request), inside Net Helper, and back to us.
+     */
+    static String split(String h, long t0, long tResp) {
+        if (h == null) return "";
+        int got = field(h, "got="), sent = field(h, "sent=");
+        if (got < 0 || sent < 0) return "";
+        long day = 86400000L, start = t0 % day, resp = tResp % day;
+        long to = (got - start + day) % day, in = (sent - got + day) % day, back = (resp - sent + day) % day;
+        return " | to helper " + to + " ms, inside " + in + " ms, back " + back + " ms";
+    }
+
+    static int field(String h, String name) {
+        int i = h.indexOf(name);
+        if (i < 0) return -1;
+        i += name.length();
+        int e = i;
+        while (e < h.length() && h.charAt(e) >= '0' && h.charAt(e) <= '9') e++;
+        try { return Integer.parseInt(h.substring(i, e)); } catch (Exception x) { return -1; }
     }
 
     /** The URL for the log, with the API key's value replaced (the log is sent to the PC). */
