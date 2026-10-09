@@ -29,6 +29,24 @@
 >   lagged by seconds and answered keys late.
 >
 > Installing an update also took ~11 minutes, because the installer copies the 8.8 MB record store.
+>
+> **What Net Helper 9300 improved** (the native helper on `127.0.0.1:8123`, Mapy 4.4–4.19), and why it
+> still wasn't enough:
+>
+> | | Without Net Helper | With Net Helper | How |
+> |---|---|---|---|
+> | Tile download in Probe (4 runs, map type list) | OSM 680 ms, OpenTopoMap 510 ms, ČÚZK 590–630 ms, Mapy.com 1550–1650 ms | OSM 230 ms, OpenTopoMap 210 ms, ČÚZK 410–430 ms, Mapy.com 270–340 ms | kept-open HTTP/HTTPS connections instead of a new TCP + TLS handshake per tile (from the PC: 45–70 ms vs 400–470 ms) |
+> | Bluetooth GPS | Java's Bluetooth next to HTTP: downloads waited seconds, `jes-java-comms` crashed (E32USER-CBase 40, KERN-EXEC 3) | no crashes; the position answered at once on port 8124 | GPS read natively in its own thread (Net Helper 0.4–0.12) |
+> | Saving a tile | ~4.3 s into the record store, the VM stalled meanwhile | ~1 s, in the background, after the answer (0.12) | file cache on disk in native code (Net Helper 0.7+) |
+> | Overpass (places of interest) | one server; Java's https to the backups hung | two backup servers over https | the helper's TLS |
+>
+> In Probe alone a tile through Net Helper took **0.18–0.23 s**, but inside Mapy the same request
+> took seconds. Probe's comparison (3.7) showed why: 0.18–0.23 s alone, ~0.4 s with the GPS being
+> polled, 0.6–0.87 s with tiles being decoded at the same time. In Mapy, with the map drawing, keys,
+> decoding and the GPS all in the same Java VM, Mapy 4.19's log split each request: **~1.7 s** from
+> Java to Net Helper, 0.1–0.7 s inside it, **3–4 s** back into Java, then 0.5 s decoding. Net Helper
+> made its own part fast, but every tile still had to pass through the phone's Java twice, and that
+> was the slow part. So the map moved to native code entirely.
 
 A map app for the **Nokia 9300 / 9500 Communicator** (Series 80 v2, Symbian 7.0s, J2ME MIDP 2.0),
 inspired by the Mapy.com Android app.
