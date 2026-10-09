@@ -19,9 +19,10 @@
 >   connections) was fast itself, but handing data between Java and it on the same phone cost seconds.
 > - **Bluetooth GPS from Java** next to HTTP made both slow and crashed `jes-java-comms`
 >   (E32USER-CBase 40, KERN-EXEC 3); the GPS had to move into Net Helper.
-> - **Storage:** MIDP writes at about 5–6 KB/s (record store 4.3 s per 20 KB, even when empty);
->   FileConnection (JSR-75) is denied on C: for an unsigned MIDlet and asks "Allow?" on almost every
->   access on the card. Signing isn't possible (closed root certificates).
+> - **Storage:** Mapy used the record store, which never prompts but writes at about 5–6 KB/s
+>   (4.3 s per 20 KB, even when empty). Files (JSR-75 FileConnection) were tried only in Probe's tests,
+>   never in Mapy: denied on C: for an unsigned MIDlet, and an "Allow?" prompt on almost every access
+>   on the card, so not an option. Signing isn't possible (closed root certificates).
 > - **Java Personal Profile** (IBM J9, the phone's second Java) has fast http, but AWT crashes
 >   (KERN-EXEC 3), image decoding and `java.io.File` never return, and there's no https.
 > - **The UI thread** shares the VM with decoding and network threads; with tiles loading the app

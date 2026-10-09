@@ -11,7 +11,8 @@ import javax.microedition.midlet.*;
  * SUPERSEDED by Mapy 9300 native (C++, ../mapy9300-native) since 2026-10-10: on the 9300 this Java
  * version is too slow to use. Each map tile cost 5-11 s (often 15-50 s): ~1.7 s for Java to reach
  * Net Helper on the same phone, 3-4 s to get the tile back, 0.3-0.9 s to decode it, ~4.3 s to save
- * 20 KB in the record store (MIDP writes ~5 KB/s; FileConnection is denied or asks on every access).
+ * 20 KB in the record store (MIDP writes ~5 KB/s; files via FileConnection, tried in Probe only, are
+ * denied on C: or ask "Allow?" on every access, so they weren't an option).
  * Bluetooth GPS next to HTTP in Java crashed jes-java-comms. The native app does the same in under
  * a second per tile. See README.md for the measurements.
  * All network work runs in background threads through Net (one request at a time);
