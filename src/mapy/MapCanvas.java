@@ -285,7 +285,7 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             if (DiskCache.has(url)) continue;
             job = t;
         }
-        if (job == null) return false;
+        if (job == null) return prefetchOne();
         String url = (String) job[3];
         fetching = url;
         long t0 = System.currentTimeMillis();
@@ -308,6 +308,57 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         fetching = null;
         synchronized (dl) { dl.notifyAll(); }
         return true;
+    }
+
+    int prefetched;
+
+    /**
+     * Download ahead (Settings.prefetch): when every visible tile is there, one more tile around the
+     * view (~0.5 km, at most 7x7 tiles) or ahead in the direction of travel (~1 km, 3 tiles wide),
+     * straight into the phone's cache, not decoded. False when there's nothing (more) to do.
+     */
+    boolean prefetchOne() {
+        if (Settings.prefetch == 0 || Settings.cacheMB <= 0) return false;
+        int nz = Math.min(zoom, Layers.nativeZoom());
+        double lat = centerLat(), lon = centerLon();
+        double tm = 40075016.0 * Math.cos(Math.toRadians(lat)) / (1 << nz);     // metres per tile
+        Vector cand = new Vector();
+        if (Settings.prefetch == 1) {
+            int r = Math.min(3, (int) Math.ceil(500 / tm));
+            int tx = (int) (Geo.lonToX(lon, nz) / T), ty = (int) (Geo.latToY(lat, nz) / T);
+            for (int ring = 1; ring <= r; ring++)            // nearest ring first
+                for (int dy = -ring; dy <= ring; dy++)
+                    for (int dx = -ring; dx <= ring; dx++)
+                        if (Math.max(Math.abs(dx), Math.abs(dy)) == ring) cand.addElement(new int[] { tx + dx, ty + dy });
+        } else {
+            Gps g = Gps.instance;
+            if (!g.hasFix() || g.speedKmh < 5) return false;
+            double c = Math.toRadians(g.course);
+            for (double d = tm / 2; d <= 1000; d += tm / 2) {
+                double la = g.lat + d * Math.cos(c) / 110540, lo = g.lon + d * Math.sin(c) / (111320 * Math.cos(Math.toRadians(g.lat)));
+                int tx = (int) (Geo.lonToX(lo, nz) / T), ty = (int) (Geo.latToY(la, nz) / T);
+                for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) cand.addElement(new int[] { tx + dx, ty + dy });
+            }
+        }
+        int max = 1 << nz;
+        for (int i = 0; i < cand.size(); i++) {
+            int[] t = (int[]) cand.elementAt(i);
+            if (t[1] < 0 || t[1] >= max) continue;
+            String url = Layers.url(nz, t[0] & (max - 1), t[1]);
+            if (url.equals(fetching) || fetched.containsKey(url) || DiskCache.has(url)) continue;
+            fetching = url;
+            try {
+                Net.Response r = Net.get(url, "ahead " + nz + "/" + (t[0] & (max - 1)) + "/" + t[1]);
+                if (r.code == 200) { DiskCache.put(url, r.body); prefetched++; }
+            } catch (Throwable e) {
+                Log.add("download ahead: " + e);
+                fetching = null;
+                return false;
+            }
+            fetching = null;
+            return true;
+        }
+        return false;
     }
 
     /** Shows one missing visible tile whose data is ready (phone cache or downloaded). False when none is missing. */

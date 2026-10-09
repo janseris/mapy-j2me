@@ -227,7 +227,7 @@ public class Gps implements Runnable, DiscoveryListener {
                 if (!answered) { Log.add("gps: Net Helper not answering (" + e + "), Java reads the GPS"); return false; }
                 if (++fails >= 5) setStatus("Net Helper stopped answering: " + e.getMessage());
             }
-            long wait = 1000 - (System.currentTimeMillis() - t0);
+            long wait = Settings.GPS_RATE_MS[Math.max(0, Math.min(2, Settings.gpsRate))] - (System.currentTimeMillis() - t0);
             if (wait > 50) try { Thread.sleep(wait); } catch (InterruptedException e) {}
         }
         try { Net.get(url.substring(0, url.indexOf("?")) + "?stop=1", "gps stop"); } catch (Throwable e) {}

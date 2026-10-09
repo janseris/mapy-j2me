@@ -24,10 +24,11 @@ public class SettingsScreen implements CommandListener {
 
     // rows
     static final int PANEL = 0, CACHE = 1, PREVIEW = 2, BT = 3, GPS_AUTO = 4, FOLLOW = 5, LIMITS = 6, HTTP = 7,
-        AKCE = 8, KEY = 9, PC = 10, UA = 11, LINK = 12, HELPER = 13, ABOUT = 14, ROWS = 15;
+        AKCE = 8, KEY = 9, PC = 10, UA = 11, LINK = 12, HELPER = 13, GPS_RATE = 14, PREFETCH = 15, ABOUT = 16, ROWS = 17;
     static final String[] NAMES = { "Left panel width", "Cache in the phone", "Preview under the cursor",
         "Bluetooth GPS (address)", "Connect GPS at start", "Map follows position", "Speed limits while driving",
-        "Public data over HTTP", "Phone's Akce menu", "Mapy.com API key", "PC for the log", "User-Agent", "Internet connection", "Net Helper (faster downloads)", "Data sources and licences" };
+        "Public data over HTTP", "Phone's Akce menu", "Mapy.com API key", "PC for the log", "User-Agent", "Internet connection", "Net Helper (faster downloads)",
+        "GPS updates (through Net Helper)", "Download ahead", "Data sources and licences" };
 
     final Mapy app;
     final Display display;
@@ -52,6 +53,8 @@ public class SettingsScreen implements CommandListener {
         choice[AKCE] = Settings.akce ? 0 : 1;
         choice[LINK] = Settings.link;
         choice[HELPER] = Settings.helper;
+        choice[GPS_RATE] = Settings.gpsRate;
+        choice[PREFETCH] = Settings.prefetch;
         text[BT] = Gps.pretty(Settings.btAddress);
         text[KEY] = Settings.mapyKey;
         text[PC] = Settings.pc;
@@ -79,6 +82,13 @@ public class SettingsScreen implements CommandListener {
         }
         if (r == LINK) return new String[] { "automatic (" + (Net.usbLink() ? "now: pauses" : "now: no pauses") + ")",
             "USB from a PC (IP passthrough): short pauses", "GPRS / other: no pauses" };
+        // Probe 3.7 measured it: asking for the position costs map downloads time (each request waits
+        // its turn with the tiles), so rarer updates leave more time for the map
+        if (r == GPS_RATE) return new String[] { "fast: every 1 s (smoothest, map loads slowest)",
+            "medium: every 2 s", "slow: every 5 s (map loads fastest)" };
+        if (r == PREFETCH) return new String[] { "off",
+            "around: ~0.5 km in all directions (more data; first time slower)",
+            "ahead: ~1 km in the direction of travel (when moving)" };
         if (r == HELPER) return new String[] { "use when running (" + Net.helperText() + ")", "don't use" };
         if (r == AKCE) return new String[] { "on (its arrows move the map)", "off (map menu: Tab)" };
         return ON_OFF;
@@ -208,6 +218,8 @@ public class SettingsScreen implements CommandListener {
         Settings.akce = choice[AKCE] == 0;
         Settings.link = choice[LINK];
         Settings.helper = choice[HELPER];
+        Settings.gpsRate = choice[GPS_RATE];
+        Settings.prefetch = choice[PREFETCH];
         String key = text[KEY].trim();
         boolean keyChanged = !key.equals(Settings.mapyKey);
         Settings.mapyKey = key;

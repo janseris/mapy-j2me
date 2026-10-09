@@ -6,7 +6,7 @@ import javax.microedition.rms.*;
 /** Settings and the last map view, in RMS. */
 public class Settings {
     /** OSM's tile policy wants a User-Agent naming the app; we use our own everywhere. */
-    public static final String DEFAULT_UA = "Mapy9300/4.16 (J2ME map app; Nokia 9300; SymbianOS/7.0s Series80/2.0; Profile/MIDP-2.0 Configuration/CLDC-1.1)";
+    public static final String DEFAULT_UA = "Mapy9300/4.17 (J2ME map app; Nokia 9300; SymbianOS/7.0s Series80/2.0; Profile/MIDP-2.0 Configuration/CLDC-1.1)";
 
     public static String pc = "192.168.137.1:8000";
     public static String userAgent = DEFAULT_UA;
@@ -38,6 +38,11 @@ public class Settings {
     public static int link = 0;
     /** Net Helper 9300 (native app on 127.0.0.1:8123): 0 use it when it's running, 1 never. See Net. */
     public static int helper = 0;
+    /** How often the position is asked from Net Helper: 0 every 1 s, 1 every 2 s, 2 every 5 s. */
+    public static int gpsRate = 1;
+    public static final int[] GPS_RATE_MS = { 1000, 2000, 5000 };
+    /** Download ahead into the phone's cache: 0 off, 1 around (~0.5 km), 2 ahead in the direction of travel (~1 km). */
+    public static int prefetch = 0;
     public static boolean pois = true;
     public static double lat = 50.0875, lon = 14.4213;   // Praha
     public static int zoom = 15;
@@ -77,6 +82,8 @@ public class Settings {
                     gpsAuto = in.readBoolean();
                     link = in.readInt();
                     helper = in.readInt();
+                    gpsRate = in.readInt();
+                    prefetch = in.readInt();
                 } catch (EOFException e) {}
             }
             rs.closeRecordStore();
@@ -114,6 +121,8 @@ public class Settings {
             o.writeBoolean(gpsAuto);
             o.writeInt(link);
             o.writeInt(helper);
+            o.writeInt(gpsRate);
+            o.writeInt(prefetch);
             byte[] b = bo.toByteArray();
             RecordStore rs = RecordStore.openRecordStore("mapy", true);
             if (rs.getNumRecords() == 0) rs.addRecord(b, 0, b.length);
