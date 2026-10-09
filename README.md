@@ -1,5 +1,34 @@
 # Mapy 9300
 
+> **Superseded by [Mapy 9300 native](../mapy9300-native)** (C++), since 2026-10-10. This Java version
+> works but is too slow to use on the Nokia 9300. The limits are in the phone's Java (MIDP), not in
+> this code, and no workaround got past them:
+>
+> | Per map tile | Java (Mapy 4.19 + Net Helper 0.12) | Native C++ (Mapy native 0.3) |
+> |---|---|---|
+> | Request from Java to Net Helper on the same phone | ~1.7 s | — (same process) |
+> | Net Helper fetching it (kept-open connection) | 0.1–0.7 s | 0.1–0.25 s (same code) |
+> | Answer from Net Helper back into Java | 3–4 s | — |
+> | Decoding a 256×256 PNG | 0.3–0.9 s | 0.34–0.47 s typical (the phone's own decoders) |
+> | Saving a 20 KB tile | ~4.3 s (record store, any size of store) | in the background, after it's shown |
+> | Whole tile, typically | **5–11 s**, often 15–50 s stalls | **under 1 s**, smooth panning |
+>
+> What was tried and measured (details in the kit's `nokia9300/NOTES.md`, Probe 3.x results):
+> - **HTTP from Java** costs 0.5–1.6 s per tile even with a direct connection; Java's comms layer
+>   allows one connection at a time and can't keep a connection open. Net Helper (native, kept-open
+>   connections) was fast itself, but handing data between Java and it on the same phone cost seconds.
+> - **Bluetooth GPS from Java** next to HTTP made both slow and crashed `jes-java-comms`
+>   (E32USER-CBase 40, KERN-EXEC 3); the GPS had to move into Net Helper.
+> - **Storage:** MIDP writes at about 5–6 KB/s (record store 4.3 s per 20 KB, even when empty);
+>   FileConnection (JSR-75) is denied on C: for an unsigned MIDlet and asks "Allow?" on almost every
+>   access on the card. Signing isn't possible (closed root certificates).
+> - **Java Personal Profile** (IBM J9, the phone's second Java) has fast http, but AWT crashes
+>   (KERN-EXEC 3), image decoding and `java.io.File` never return, and there's no https.
+> - **The UI thread** shares the VM with decoding and network threads; with tiles loading the app
+>   lagged by seconds and answered keys late.
+>
+> Installing an update also took ~11 minutes, because the installer copies the 8.8 MB record store.
+
 A map app for the **Nokia 9300 / 9500 Communicator** (Series 80 v2, Symbian 7.0s, J2ME MIDP 2.0),
 inspired by the Mapy.com Android app.
 
