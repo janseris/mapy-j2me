@@ -9,9 +9,9 @@
 > | Request from Java to Net Helper on the same phone | ~1.7 s | — (same process) |
 > | Net Helper fetching it (kept-open connection) | 0.1–0.7 s | 0.1–0.25 s (same code) |
 > | Answer from Net Helper back into Java | 3–4 s | — |
-> | Decoding a 256×256 PNG | 0.3–0.9 s | 0.34–0.47 s typical (the phone's own decoders) |
+> | Decoding a 256×256 PNG | 0.3–0.9 s | median 0.47 s, 1.6 s on average while downloading (the phone's own decoders) |
 > | Saving a 20 KB tile | ~4.3 s (record store, any size of store) | in the background, after it's shown |
-> | Whole tile, typically | **5–11 s**, often 15–50 s stalls | **under 1 s**, smooth panning |
+> | Whole tile, typically | **5–11 s**, often 15–50 s stalls | **0.5–2 s**, and the map stays responsive meanwhile |
 >
 > What was tried and measured (details in the kit's `nokia9300/NOTES.md`, Probe 3.x results):
 > - **HTTP from Java** costs 0.5–1.6 s per tile even with a direct connection; Java's comms layer
