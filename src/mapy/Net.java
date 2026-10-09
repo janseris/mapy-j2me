@@ -171,6 +171,20 @@ public class Net {
         return e < 0 ? url.substring(s) : url.substring(s, e);
     }
 
+    /**
+     * Tiles: through Net Helper 0.7+ with its tile cache on disk ("cache"), or only into that cache
+     * ("ahead": download ahead, no body comes back). Net Helper then keeps the tile, so Mapy doesn't
+     * write it into its own record store (the slowest part of Mapy 4.16: 3.5-13 s per tile).
+     * Without Net Helper these are plain GETs and the caller stores the tile itself.
+     */
+    static final java.util.Hashtable modes = new java.util.Hashtable();     // Thread -> "cache" / "ahead"
+
+    public static Response getTile(String url, String label, boolean ahead) throws IOException {
+        Thread t = Thread.currentThread();
+        modes.put(t, ahead ? "ahead" : "cache");
+        try { return get(url, label); } finally { modes.remove(t); }
+    }
+
     public static Response get(String url, String label) throws IOException {
         if (Settings.httpFirst && url.startsWith("https://") && url.indexOf("apikey") < 0) {
             String h = host(url);
@@ -244,6 +258,8 @@ public class Net {
             for (attempt = 1; attempt <= attempts; attempt++) {
                 boolean viaHelper = !direct && !local && useHelper(body);
                 Attempt a = new Attempt(url, contentType, body, label, viaHelper);
+                Object mode = modes.get(Thread.currentThread());
+                if (mode != null) a.mode = (String) mode;
                 lastActivity = System.currentTimeMillis();
                 a.start();
                 while (!a.done) {
@@ -322,6 +338,7 @@ public class Net {
         final String url, contentType, label;
         final byte[] body;
         final boolean viaHelper;
+        String mode;                // null, "cache" or "ahead" (see getTile)
         volatile boolean done, abandoned;
         Response response;
         IOException error;
@@ -347,7 +364,8 @@ public class Net {
                 phase("connecting", 0);
                 if (viaHelper) {
                     // the helper sends exactly one User-Agent (ours), so no duplicate as with the phone's
-                    c = (HttpConnection) Connector.open(HELPER + encode(url));
+                    c = (HttpConnection) Connector.open(("ahead".equals(mode) ? "http://127.0.0.1:8123/ahead?u=" : HELPER) + encode(url)
+                        + ("cache".equals(mode) ? "&cache=1" : ""));
                     c.setRequestProperty("X-Ua", Settings.userAgent);
                 } else {
                     c = (HttpConnection) Connector.open(url);

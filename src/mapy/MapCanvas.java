@@ -291,10 +291,11 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
         long t0 = System.currentTimeMillis();
         Object[] res;
         try {
-            Net.Response r = Net.get(url, "tile " + job[0]);
+            Net.Response r = Net.getTile(url, "tile " + job[0], false);
             String info = "net " + r.scheme + (r.helper != null ? " via helper (" + r.helper + ")" : "") + " HTTP " + r.code + " "
                 + r.body.length + " B " + r.type + " " + (System.currentTimeMillis() - t0) + " ms";
-            if (r.code == 200) res = new Object[] { r.body, info, null };
+            // through Net Helper the tile is already in its cache on disk: not into the record store again
+            if (r.code == 200) res = new Object[] { r.body, info, null, r.helper != null ? Boolean.TRUE : null };
             else {
                 String why = Net.text(r);
                 Log.add("tile " + job[4] + ": HTTP " + r.code + " " + why);
@@ -311,6 +312,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
     }
 
     int prefetched;
+    /** Tiles downloaded ahead into Net Helper's cache this run (so they aren't asked for again). */
+    final Hashtable aheadInHelper = new Hashtable();
 
     /**
      * Download ahead (Settings.prefetch): when every visible tile is there, one more tile around the
@@ -345,11 +348,15 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
             int[] t = (int[]) cand.elementAt(i);
             if (t[1] < 0 || t[1] >= max) continue;
             String url = Layers.url(nz, t[0] & (max - 1), t[1]);
-            if (url.equals(fetching) || fetched.containsKey(url) || DiskCache.has(url)) continue;
+            if (url.equals(fetching) || fetched.containsKey(url) || DiskCache.has(url) || aheadInHelper.containsKey(url)) continue;
             fetching = url;
             try {
-                Net.Response r = Net.get(url, "ahead " + nz + "/" + (t[0] & (max - 1)) + "/" + t[1]);
-                if (r.code == 200) { DiskCache.put(url, r.body); prefetched++; }
+                Net.Response r = Net.getTile(url, "ahead " + nz + "/" + (t[0] & (max - 1)) + "/" + t[1], true);
+                if (r.code == 200) {
+                    if (r.helper == null) DiskCache.put(url, r.body);      // without Net Helper: our own cache
+                    else aheadInHelper.put(url, Boolean.TRUE);
+                    prefetched++;
+                }
             } catch (Throwable e) {
                 Log.add("download ahead: " + e);
                 fetching = null;
@@ -398,7 +405,8 @@ public class MapCanvas extends Canvas implements CommandListener, Runnable, Net.
                 if (res != null) {
                     body = (byte[]) res[0];
                     tileInfo += " " + res[1];
-                    if (body != null) {
+                    if (body != null && res.length > 3 && res[3] != null) tileInfo += ", in Net Helper's cache";
+                    else if (body != null) {
                         long ts = System.currentTimeMillis();
                         DiskCache.put(url, body);
                         tileInfo += ", saved in " + (System.currentTimeMillis() - ts) + " ms";
